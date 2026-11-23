@@ -1,0 +1,18 @@
+{
+  "appId": "com.cgemonitor",
+  "appName": "CgeMonitor",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": [
+      "orchestrator-portalescge-prd.lfr.cloud",
+      "sucursalvirtual.cge.cl",
+      "cdn.jsdelivr.net"
+    ]
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor de Deuda, Corte y Pagos CGE</title>
+  <!-- SheetJS para leer archivos Excel (.xlsx, .xls) y CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a; --card: #1e293b; --border: #334155;
+      --text: #f8fafc; --muted: #94a3b8; --accent: #3b82f6;
+      --accent-hover: #2563eb; --green: #10b981; --green-hover: #059669;
+      --danger: #ef4444; --danger-bg: #7f1d1d; --purple: #8b5cf6; --purple-hover: #7c3aed;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 1.5rem; background: var(--bg); color: var(--text); max-width: 1600px; margin-inline: auto; }
+    h1 { margin-top: 0; font-size: 1.4rem; display: flex; align-items: center; gap: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 330px 1fr; gap: 1.25rem; align-items: start; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
+    label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.4rem; }
+    textarea, input[type="number"], input[type="text"], select {
+      width: 100%; background: #0b1120; border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 0.65rem; font-family: monospace; font-size: 0.88rem; margin-bottom: 0.9rem;
+    }
+    textarea { height: 180px; resize: vertical; }
+    .file-drop {
+      border: 1.5px dashed var(--border); background: #0b1120; border-radius: 8px;
+      padding: 0.85rem; text-align: center; cursor: pointer; margin-bottom: 0.9rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--accent); background: rgba(59, 130, 246, 0.08);
+    }
+    .file-drop input[type="file"] { display: none; }
+    .excel-panel {
+      display: none; background: #0b1120; border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.75rem; margin-bottom: 0.9rem;
+    }
+    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    button {
+      background: var(--accent); color: white; border: none; border-radius: 6px;
+      padding: 0.55rem 0.85rem; font-weight: 600; font-size: 0.82rem; cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.update-btn { background: var(--green); }
+    button.update-btn:hover:not(:disabled) { background: var(--green-hover); }
+    button.detail-btn { background: var(--purple); }
+    button.detail-btn:hover:not(:disabled) { background: var(--purple-hover); }
+    button.secondary { background: #334155; }
+    button.secondary:hover:not(:disabled) { background: #475569; }
+    button.danger { background: var(--danger-bg); color: #fecaca; }
+    button.danger:hover:not(:disabled) { background: #991b1b; }
+    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-size: 0.88rem; color: var(--muted); flex-wrap: wrap; gap: 0.5rem; }
+    .summary-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+    .pill { background: #0b1120; border: 1px solid var(--border); padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    th, td { text-align: left; padding: 0.65rem 0.45rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.73rem; text-transform: uppercase; user-select: none; }
+    th.sortable { cursor: pointer; transition: color 0.15s; }
+    th.sortable:hover { color: var(--text); }
+    th.active-sort { color: #38bdf8; }
+    tr.updating-row { background: rgba(59, 130, 246, 0.12); }
+    tr.selected-row { background: rgba(239, 68, 68, 0.08); }
+    tr.top3-bill { background: rgba(139, 92, 246, 0.09); }
+    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+    .mono { font-family: monospace; font-size: 0.9rem; }
+    .sub-muted { display: block; font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+    .client-link {
+      color: #38bdf8; text-decoration: none; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 3px;
+    }
+    .client-link:hover { text-decoration: underline; color: #60a5fa; }
+    .tag {
+      display: inline-block; padding: 0.25rem 0.6rem; border-radius: 6px;
+      font-weight: 700; font-size: 0.74rem; letter-spacing: 0.03em; text-transform: uppercase;
+      cursor: pointer;
+    }
+    .tag:hover { filter: brightness(1.2); }
+    .tag-desconexion { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+    .tag-detalle { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; }
+    .tag-pagado { background: rgba(34, 197, 94, 0.25); color: #4ade80; border: 1px solid #22c55e; }
+    .tag-aldia { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid #475569; }
+    .tag-error { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
+    .prev-change { display: block; font-size: 0.72rem; color: #4ade80; margin-top: 3px; font-weight: 600; }
+    #jsonModal, #docsModal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      align-items: center; justify-content: center; padding: 1.5rem; z-index: 50;
+    }
+    .modal-box {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      max-width: 1040px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; padding: 1.25rem;
+    }
+    pre {
+      background: #0b1120; padding: 1rem; border-radius: 6px; overflow: auto;
+      font-size: 0.8rem; color: #38bdf8; margin: 0.75rem 0; flex: 1;
+    }
+    .manual-pdf-bar {
+      background: #0b1120; border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.75rem; margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end;
+    }
+    .manual-pdf-bar div { flex: 1; min-width: 140px; }
+    .manual-pdf-bar input { margin-bottom: 0; padding: 0.45rem 0.6rem; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <h1>⚡ Monitor Masivo de Medidores, Deuda y Último Pago (CGE)</h1>
+
+  <div class="grid">
+    <div class="card">
+      <label for="inputType">Modo de Entrada</label>
+      <select id="inputType">
+        <option value="medidor">Por Número de Medidor (Busca Cliente + Deuda)</option>
+        <option value="cliente">Directo por Número de Cliente (ej: 2480548)</option>
+      </select>
+
+      <label>Importar Planilla (.xlsx, .xls, .csv)</label>
+      <div class="file-drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" />
+        <div style="font-size:0.85rem;font-weight:600;color:var(--text)" id="fileDropTitle">📂 Haz clic o arrastra tu Excel / CSV aquí</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:3px">Detecta columnas de medidores o clientes automáticamente</div>
+      </div>
+
+      <div class="excel-panel" id="excelPanel">
+        <label for="sheetSelect" id="sheetLabel" style="display:none">Hoja del archivo</label>
+        <select id="sheetSelect" style="display:none;margin-bottom:0.6rem" onchange="onSheetChange()"></select>
+
+        <label for="columnSelect">Columna a extraer</label>
+        <select id="columnSelect" style="margin-bottom:0.5rem" onchange="previewSelectedColumn()"></select>
+
+        <div id="excelStats" style="font-size:0.76rem;color:#4ade80;margin-bottom:0.6rem"></div>
+        <div class="btn-row">
+          <button onclick="applyExcelColumn(false)">Reemplazar Lista</button>
+          <button class="secondary" onclick="applyExcelColumn(true)">➕ Agregar a Lista</button>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem">
+        <label for="meters" style="margin:0">Listado (<span id="listCount">1</span> ítems)</label>
+        <button class="secondary" style="padding:0.2rem 0.5rem;font-size:0.72rem" onclick="clearTextarea()">Limpiar texto</button>
+      </div>
+      <textarea id="meters" oninput="updateTextareaCount()" placeholder="877049&#10;2480548&#10;1750924">2480548</textarea>
+
+      <label for="delay">Pausa entre consultas (ms)</label>
+      <input type="number" id="delay" value="450" min="100" step="100" />
+
+      <div class="btn-row">
+        <button id="startBtn" onclick="startBatch()">Consultar Listado</button>
+        <button id="updateAllBtn" class="update-btn" onclick="updateExistingTable()" disabled>🔄 Actualizar Tabla</button>
+        <button id="stopBtn" class="secondary" onclick="stopBatch()" disabled>Detener</button>
+      </div>
+
+      <hr style="border:0; border-top:1px solid var(--border); margin: 1rem 0;" />
+      <label>Historial de Revisión Guardado</label>
+      <div class="btn-row">
+        <button class="secondary danger" onclick="clearHistory()">Reiniciar Línea Base</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="status-bar">
+        <span id="progressText">Listo para consultar</span>
+        <div class="btn-row">
+          <button id="sortAddressBtn" class="secondary" onclick="sortTableBy('direccion')" disabled title="Ordenar alfabéticamente por calle y número">🔤 Ordenar Dirección (A-Z)</button>
+          <button id="deleteSelectedBtn" class="danger" onclick="deleteSelectedRows()" disabled>🗑️ Eliminar Seleccionados (0)</button>
+          <button id="cleanAlDiaBtn" class="secondary" onclick="deleteNonDebtRows()" disabled title="Elimina las filas Al Día o Sin Datos">🧹 Quitar Al Día / Errores</button>
+          <button class="update-btn" id="updateTopBtn" onclick="updateExistingTable()" disabled>🔄 Actualizar Todos</button>
+          <button class="secondary" onclick="copyAccounts()">Copiar para Excel</button>
+          <button class="secondary" onclick="exportCSV()">Exportar CSV</button>
+        </div>
+      </div>
+
+      <div class="summary-pills">
+        <div class="pill">Total: <strong id="countTotal">0</strong></div>
+        <div class="pill" style="color:#f87171">Desconexión (3 bol.): <strong id="countDesc">0</strong></div>
+        <div class="pill" style="color:#fbbf24">Detalle (1-2 bol.): <strong id="countDet">0</strong></div>
+        <div class="pill" style="color:#4ade80">Pagados: <strong id="countPag">0</strong></div>
+        <div class="pill" style="color:#cbd5e1">Al Día (0): <strong id="countAlDia">0</strong></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" title="Seleccionar todos" /></th>
+            <th class="sortable" id="th-medidor" onclick="sortTableBy('medidor')"># Medidor ↕</th>
+            <th class="sortable" id="th-cliente" onclick="sortTableBy('cliente')">N° Cliente ↕</th>
+            <th class="sortable" id="th-direccion" onclick="sortTableBy('direccion')">Dirección ↕</th>
+            <th class="sortable" id="th-deuda" onclick="sortTableBy('deuda')">Deuda Total ↕</th>
+            <th class="sortable" id="th-boletas" onclick="sortTableBy('boletas')">Boletas ↕</th>
+            <th>Último Pago</th>
+            <th>Últ. Revisión</th>
+            <th class="sortable" id="th-tag" onclick="sortTableBy('tag')">Estado (Clic abre Boletas) ↕</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal para ver respuesta JSON Cruda -->
+  <div id="jsonModal" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong id="modalTitle">Respuesta JSON</strong>
+        <div class="btn-row">
+          <button onclick="copyModalJson()">Copiar JSON</button>
+          <button class="secondary" onclick="document.getElementById('jsonModal').style.display='none'">Cerrar</button>
+        </div>
+      </div>
+      <pre id="modalContent"></pre>
+    </div>
+  </div>
+
+  <!-- Modal para listar las últimas Boletas y descargar PDF -->
+  <div id="docsModal" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
+        <strong id="docsModalTitle" style="font-size:1.05rem">📄 Últimas Boletas y Documentos PDF</strong>
+        <div class="btn-row">
+          <button class="secondary" onclick="toggleDocsRawJson()">🔍 Ver JSON de consultarListaUltimasBoletas</button>
+          <button class="secondary" onclick="document.getElementById('docsModal').style.display='none'">Cerrar</button>
+        </div>
+      </div>
+
+      <div id="docsModalLoading" style="color:var(--muted);font-size:0.9rem;padding:1rem;text-align:center">
+        Consultando documentos y boletas...
+      </div>
+
+      <div id="docsTableWrapper" style="overflow-y:auto;max-height:55vh;display:none">
+        <table id="docsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>N° Documento (OPBEL)</th>
+              <th>Título / Concepto</th>
+              <th>Fecha Emisión</th>
+              <th>Vencimiento</th>
+              <th>Monto</th>
+              <th>Estado</th>
+              <th>Acciones PDF</th>
+            </tr>
+          </thead>
+          <tbody id="docsTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="manual-pdf-bar">
+        <div>
+          <label>Cliente</label>
+          <input type="text" id="manualPdfClient" readonly />
+        </div>
+        <div>
+          <label>N° Documento (OPBEL - 12 dígitos)</label>
+          <input type="text" id="manualPdfOpbel" placeholder="000826441610" />
+        </div>
+        <div>
+          <label>Fecha Emisión (DD-MM-YYYY)</label>
+          <input type="text" id="manualPdfFecha" placeholder="27-10-2026" />
+        </div>
+        <div>
+          <label>Título</label>
+          <input type="text" id="manualPdfTitle" value="DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024" />
+        </div>
+        <button class="detail-btn" onclick="triggerManualPdf()">📥 Descargar Detalle PDF</button>
+      </div>
+
+      <pre id="docsRawJsonPre" style="display:none;max-height:240px;margin-top:0.75rem"></pre>
+    </div>
+  </div>
+
+  <script>
+    const URL_MEDIDOR = "https://orchestrator-portalescge-prd.lfr.cloud/busquedaClientePorMedidor";
+    const URL_DEUDA_CTA = "https://orchestrator-portalescge-prd.lfr.cloud/consultarDeudaPorCuentaContrato";
+    const URL_PAGO = "https://orchestrator-portalescge-prd.lfr.cloud/getPagoInfo";
+    const URL_DETALLE = "https://orchestrator-portalescge-prd.lfr.cloud/detalleCuentaContrato";
+    const URL_DETALLE_SL = "https://orchestrator-portalescge-prd.lfr.cloud/detalleCuentaContratoSL";
+    const URL_LISTA_BOLETAS = "https://orchestrator-portalescge-prd.lfr.cloud/consultarListaUltimasBoletas";
+    const URL_PDF = "https://orchestrator-portalescge-prd.lfr.cloud/consultarDetalleBoletaPDF";
+
+    const STORAGE_KEY = "cge_debt_history_v7";
+
+    const COMMON_HEADERS = {
+      "accept": "*/*",
+      "app-source": "react-app",
+      "content-type": "application/json",
+      "x-client": "react-app",
+      "x-csrf-token": "g8IS3NBw"
+    };
+
+    let isRunning = false;
+    let resultsData = [];
+    let lastDocsModalRawJson = null;
+
+    let currentSortField = null;
+    let currentSortAsc = true;
+
+    let currentWorkbook = null;
+    let currentSheetRows = [];
+    let currentHeaders = [];
+
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    const dropZone = document.getElementById("dropZone");
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) processSpreadsheetFile(file);
+    });
+
+    function handleFileSelect(event) {
+      const file = event.target.files?.[0];
+      if (file) processSpreadsheetFile(file);
+    }
+
+    function processSpreadsheetFile(file) {
+      if (typeof XLSX === "undefined") {
+        alert("La librería lectora de Excel aún no ha cargado. Verifica tu conexión a internet.");
+        return;
+      }
+      document.getElementById("fileDropTitle").textContent = `📄 ${file.name}`;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          currentWorkbook = XLSX.read(data, { type: "array" });
+
+          const sheetSelect = document.getElementById("sheetSelect");
+          const sheetLabel = document.getElementById("sheetLabel");
+          sheetSelect.innerHTML = "";
+
+          currentWorkbook.SheetNames.forEach((name) => {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            sheetSelect.appendChild(opt);
+          });
+
+          if (currentWorkbook.SheetNames.length > 1) {
+            sheetSelect.style.display = "block";
+            sheetLabel.style.display = "block";
+          } else {
+            sheetSelect.style.display = "none";
+            sheetLabel.style.display = "none";
+          }
+
+          document.getElementById("excelPanel").style.display = "block";
+          onSheetChange();
+        } catch (err) {
+          alert("Error al leer el archivo: " + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function onSheetChange() {
+      const sheetName = document.getElementById("sheetSelect").value;
+      const worksheet = currentWorkbook.Sheets[sheetName];
+      const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+
+      if (!matrix || matrix.length === 0) {
+        document.getElementById("excelStats").textContent = "La hoja seleccionada está vacía.";
+        return;
+      }
+
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(10, matrix.length); i++) {
+        const nonEmptyCount = matrix[i].filter(c => String(c).trim() !== "").length;
+        if (nonEmptyCount >= 1) {
+          headerRowIndex = i;
+          break;
+        }
+      }
+
+      const rawHeaderRow = matrix[headerRowIndex] || [];
+      let maxCols = rawHeaderRow.length;
+      matrix.forEach(r => { if (r.length > maxCols) maxCols = r.length; });
+
+      currentHeaders = [];
+      for (let c = 0; c < maxCols; c++) {
+        const cellText = String(rawHeaderRow[c] ?? "").trim();
+        const colLetter = XLSX.utils.encode_col(c);
+        currentHeaders.push({
+          index: c,
+          label: cellText ? `${colLetter}: ${cellText}` : `Columna ${colLetter}`
+        });
+      }
+
+      const firstRowLooksLikeHeader = rawHeaderRow.some(c => /[a-zA-ZáéíóúñÁÉÍÓÚÑ]{3,}/.test(String(c)));
+      currentSheetRows = firstRowLooksLikeHeader ? matrix.slice(headerRowIndex + 1) : matrix.slice(headerRowIndex);
+
+      const colSelect = document.getElementById("columnSelect");
+      colSelect.innerHTML = "";
+
+      let bestColIndex = 0;
+      let bestScore = -1;
+
+      currentHeaders.forEach((h) => {
+        const opt = document.createElement("option");
+        opt.value = h.index;
+        opt.textContent = h.label;
+        colSelect.appendChild(opt);
+
+        const lower = h.label.toLowerCase();
+        let score = 0;
+        if (lower.includes("medidor") || lower.includes("aparato") || lower.includes("serie")) score += 50;
+        if (lower.includes("cliente") || lower.includes("contrato") || lower.includes("cta")) score += 40;
+
+        const validCount = extractCleanValuesFromCol(h.index).length;
+        score += Math.min(validCount, 30);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestColIndex = h.index;
+        }
+      });
+
+      colSelect.value = bestColIndex;
+      previewSelectedColumn();
+      applyExcelColumn(false);
+    }
+
+    function extractCleanValuesFromCol(colIndex) {
+      const values = [];
+      for (const row of currentSheetRows) {
+        let raw = row[colIndex];
+        if (raw === undefined || raw === null) continue;
+        let str = String(raw).trim();
+        if (!str) continue;
+        str = str.replace(/\.0+$/, "");
+        const cleaned = str.replace(/[^0-9]/g, "");
+        if (cleaned.length >= 4 && cleaned.length <= 15) {
+          values.push(cleaned);
+        }
+      }
+      return values;
+    }
+
+    function previewSelectedColumn() {
+      const colIndex = parseInt(document.getElementById("columnSelect").value || "0", 10);
+      const vals = extractCleanValuesFromCol(colIndex);
+      const uniqueVals = [...new Set(vals)];
+      const sample = uniqueVals.slice(0, 3).join(", ");
+      document.getElementById("excelStats").textContent =
+        uniqueVals.length > 0
+          ? `✔ ${uniqueVals.length} números detectados (ej: ${sample}${uniqueVals.length > 3 ? "..." : ""})`
+          : `⚠ No se detectaron números válidos en esta columna.`;
+    }
+
+    function applyExcelColumn(append = false) {
+      const colIndex = parseInt(document.getElementById("columnSelect").value || "0", 10);
+      const newVals = extractCleanValuesFromCol(colIndex);
+      if (newVals.length === 0) return;
+
+      const textarea = document.getElementById("meters");
+      if (append && textarea.value.trim().length > 0) {
+        const existing = textarea.value.split(/[\n,;\s]+/).map(s => s.trim()).filter(Boolean);
+        const combined = [...new Set([...existing, ...newVals])];
+        textarea.value = combined.join("\n");
+      } else {
+        textarea.value = [...new Set(newVals)].join("\n");
+      }
+      updateTextareaCount();
+    }
+
+    function updateTextareaCount() {
+      const list = document.getElementById("meters").value.split(/[\n,;\s]+/).map(m => m.trim()).filter(Boolean);
+      document.getElementById("listCount").textContent = list.length;
+    }
+
+    function clearTextarea() {
+      document.getElementById("meters").value = "";
+      updateTextareaCount();
+    }
+
+    function sortTableBy(field) {
+      if (resultsData.length <= 1 || isRunning) return;
+
+      if (currentSortField === field) {
+        currentSortAsc = !currentSortAsc;
+      } else {
+        currentSortField = field;
+        currentSortAsc = true;
+      }
+
+      const collator = new Intl.Collator("es-CL", { numeric: true, sensitivity: "base" });
+
+      resultsData.sort((a, b) => {
+        let cmp = 0;
+
+        if (field === "deuda" || field === "boletas") {
+          cmp = (Number(a[field]) || 0) - (Number(b[field]) || 0);
+        } else if (field === "direccion") {
+          const aInvalid = !a.direccion || a.direccion === "-" || a.direccion === "Medidor no encontrado" || a.direccion.startsWith("Error");
+          const bInvalid = !b.direccion || b.direccion === "-" || b.direccion === "Medidor no encontrado" || b.direccion.startsWith("Error");
+          if (aInvalid && !bInvalid) return 1;
+          if (!aInvalid && bInvalid) return -1;
+          cmp = collator.compare(String(a.direccion || ""), String(b.direccion || ""));
+        } else {
+          cmp = collator.compare(String(a[field] || ""), String(b[field] || ""));
+        }
+
+        return currentSortAsc ? cmp : -cmp;
+      });
+
+      const fields = ["medidor", "cliente", "direccion", "deuda", "boletas", "tag"];
+      const labels = {
+        medidor: "# Medidor",
+        cliente: "N° Cliente",
+        direccion: "Dirección",
+        deuda: "Deuda Total",
+        boletas: "Boletas",
+        tag: "Estado (Clic abre Boletas)"
+      };
+
+      fields.forEach(f => {
+        const th = document.getElementById(`th-${f}`);
+        if (!th) return;
+        if (f === currentSortField) {
+          th.classList.add("active-sort");
+          th.textContent = `${labels[f]} ${currentSortAsc ? "▲" : "▼"}`;
+        } else {
+          th.classList.remove("active-sort");
+          th.textContent = `${labels[f]} ↕`;
+        }
+      });
+
+      const sortBtn = document.getElementById("sortAddressBtn");
+      if (sortBtn && field === "direccion") {
+        sortBtn.textContent = `🔤 Dirección (${currentSortAsc ? "A-Z ▲" : "Z-A ▼"})`;
+      }
+
+      syncTextareaWithTable();
+      renderTable();
+    }
+
+    function getHistory() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+      catch { return {}; }
+    }
+
+    function saveHistory(historyObj) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(historyObj));
+    }
+
+    function clearHistory() {
+      if (confirm("¿Seguro que deseas borrar la línea base guardada?")) {
+        localStorage.removeItem(STORAGE_KEY);
+        alert("Línea base reiniciada.");
+      }
+    }
+
+    /**
+     * Parsea montos en CLP incluyendo notación científica de Java/Liferay para decenas de millones
+     * (ej: "1.5E7" -> 15000000, "2.35E+07" -> 23500000), decimales ".0"/".00" y puntos de miles ("40.100").
+     */
+    function parseCLP(val) {
+      if (val === undefined || val === null || val === "") return null;
+      if (typeof val === "number") return Number.isFinite(val) ? Math.round(val) : null;
+
+      const s = String(val).trim();
+      if (!/\d/.test(s)) return null;
+
+      // Evitar confundir fechas con montos
+      if (
+        /^\d{4}[-/.]\d{2}[-/.]\d{2}/.test(s) ||
+        /^\d{2}[-/.]\d{2}[-/.]\d{4}/.test(s)
+      ) {
+        return null;
+      }
+
+      const cleanedNoSpace = s.replace(/[$\s]/g, "");
+
+      // 1. Notación científica (Java convierte números >= 10.000.000 a "1.5E7")
+      if (/^[+-]?\d+(?:[.,]\d+)?[eE][+-]?\d+$/.test(cleanedNoSpace)) {
+        const num = Number(cleanedNoSpace.replace(",", "."));
+        return Number.isFinite(num) ? Math.round(num) : null;
+      }
+
+      // 2. Decimal estándar con 1 o 2 decimales y sin separador de miles (ej: "224000.0" o "40100.00", NO "40.100")
+      if (/^[+-]?\d+\.\d{1,2}$/.test(cleanedNoSpace)) {
+        const num = Number(cleanedNoSpace);
+        return Number.isFinite(num) ? Math.round(num) : null;
+      }
+
+      // 3. Quitar decimales al final (",00" o ".00" pero nunca ".000" de miles)
+      const withoutTrailingDecimals = cleanedNoSpace.replace(/[,.]\d{1,2}$/, "");
+
+      // 4. En CLP los puntos separan miles ("40.100" -> "40100", "15.200.000" -> "15200000")
+      const digitsOnly = withoutTrailingDecimals.replace(/[^0-9-]/g, "");
+      if (!digitsOnly || digitsOnly === "-") return null;
+
+      const num = parseInt(digitsOnly, 10);
+      return Number.isNaN(num) ? null : num;
+    }
+
+    function parsePaymentDate(val) {
+      if (!val) return null;
+      const s = String(val).trim();
+      if (!s || s === "-" || s === "0000-00-00" || s === "00000000" || s === "0") return null;
+
+      let year, month, day;
+
+      const sapMatch = s.match(/^(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/);
+      if (sapMatch) [, year, month, day] = sapMatch;
+
+      if (!year) {
+        const isoMatch = s.match(/^(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])/);
+        if (isoMatch) [, year, month, day] = isoMatch;
+      }
+
+      if (!year) {
+        const dmyMatch = s.match(/^(0?[1-9]|[12]\d|3[01])[-/](0?[1-9]|1[0-2])[-/](20\d{2})/);
+        if (dmyMatch) {
+          day = dmyMatch[1].padStart(2, "0");
+          month = dmyMatch[2].padStart(2, "0");
+          year = dmyMatch[3];
+        }
+      }
+
+      if (year && month && day) {
+        const dateObj = new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59);
+        return {
+          display: `${day}-${month}-${year}`,
+          isoDate: `${year}-${month}-${day}`,
+          timestamp: dateObj.getTime()
+        };
+      }
+
+      return s.length <= 20 ? { display: s, isoDate: s, timestamp: null } : null;
+    }
+
+    async function fetchClienteByMedidor(medidor) {
+      const res = await fetch(URL_MEDIDOR, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify({
+          NroMedidor: String(medidor).trim(),
+          Sociedad: "E200",
+          url: "OFVCGE_P"
+        })
+      });
+      return res.json();
+    }
+
+    async function fetchDeudaPorCuenta(nroCliente) {
+      const cleanClient = String(nroCliente).trim().replace(/^0+/, "");
+      const res = await fetch(URL_DEUDA_CTA, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify({
+          ITEM: {
+            CANAL: "OVIRTUAL",
+            CTA_CTO: cleanClient
+          },
+          url: "OFVCGE_P"
+        })
+      });
+      return res.json();
+    }
+
+    async function fetchPagoInfo(nroCliente) {
+      const cleanClient = String(nroCliente).trim().replace(/^0+/, "");
+      const res = await fetch(URL_PAGO, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify({
+          I_CANAL: "OVIRTUAL",
+          I_VKONT: cleanClient,
+          Sociedad: "E200",
+          url: "OFVCGE_P"
+        })
+      });
+      return res.json();
+    }
+
+    async function fetchDetalleCuenta(nroCliente) {
+      const cleanClient = String(nroCliente).trim().replace(/^0+/, "");
+      const res = await fetch(URL_DETALLE, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify({
+          ITEM: {
+            Sociedad: "E200",
+            cta_cto: cleanClient
+          },
+          url: "OFVCGE_P"
+        })
+      });
+      return res.json();
+    }
+
+    async function fetchDetalleCuentaSL(nroCliente) {
+      const cleanClient = String(nroCliente).trim().replace(/^0+/, "");
+      const res = await fetch(URL_DETALLE_SL, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify({
+          ITEM: {
+            Sociedad: "E200",
+            cta_cto: cleanClient
+          },
+          url: "OFVCGE_P"
+        })
+      });
+      return res.json();
+    }
+
+    async function fetchListaUltimasBoletas(nroCliente) {
+      const cleanClient = String(nroCliente).trim().replace(/^0+/, "");
+      const res = await fetch(URL_LISTA_BOLETAS, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify({
+          CuentaContrato: cleanClient,
+          CantidadDocumentos: "13",
+          RangoFechas: "",
+          Sociedad: "E200",
+          url: "OFVCGE_P"
+        })
+      });
+      return res.json();
+    }
+
+    function extractAccountData(deudaCtaData, detalleData, pagoData) {
+      let ultBoleta = null;
+      let antBoleta = null;
+      let terBoleta = null;
+      let direccion = null;
+      let parsedPayDate = null;
+      let montoUltimoPago = null;
+
+      // Leer deuda directa únicamente desde los nodos oficiales de getPagoInfo
+      const pagoActualBetrw = parseCLP(pagoData?.deudaActual?.BETRW) ?? 0;
+      const pagoVencidaBetrw = parseCLP(pagoData?.deudaVencida?.BETRW) ?? 0;
+      const deudaPagoInfo = Math.max(pagoActualBetrw, pagoVencidaBetrw);
+
+      const allKeyValues = [];
+
+      const scanObject = (obj, sourceName) => {
+        if (!obj || typeof obj !== "object") return;
+        for (const [k, v] of Object.entries(obj)) {
+          if (Array.isArray(v)) {
+            v.forEach(sub => scanObject(sub, sourceName + "." + k));
+          } else if (v !== null && typeof v === "object") {
+            scanObject(v, sourceName + "." + k);
+          } else {
+            allKeyValues.push({ key: k, keyLower: k.toLowerCase(), val: v, source: sourceName });
+          }
+        }
+      };
+
+      scanObject(deudaCtaData, "deudaCta");
+      scanObject(detalleData, "detalle");
+      scanObject(pagoData, "pago");
+
+      for (const entry of allKeyValues) {
+        const kl = entry.keyLower.replace(/_/g, "");
+        if (ultBoleta === null && (kl === "ultboleta" || kl.includes("ultboleta"))) {
+          ultBoleta = parseCLP(entry.val) ?? 0;
+        }
+        if (antBoleta === null && (kl === "antboleta" || kl.includes("antboleta"))) {
+          antBoleta = parseCLP(entry.val) ?? 0;
+        }
+        if (terBoleta === null && (kl === "terboleta" || kl.includes("terboleta"))) {
+          terBoleta = parseCLP(entry.val) ?? 0;
+        }
+      }
+
+      const u = ultBoleta ?? 0;
+      const a = antBoleta ?? 0;
+      const t = terBoleta ?? 0;
+
+      // Si hay deuda en ultBoleta la usamos, y si ultBoleta viene en 0 pero getPagoInfo tiene deuda, usamos la de getPagoInfo
+      let deuda = Math.max(u, deudaPagoInfo);
+      let boletas = 0;
+
+      if (t > 0) {
+        boletas = 3;
+      } else if (a > 0) {
+        boletas = 2;
+      } else if (u > 0 || deudaPagoInfo > 0) {
+        boletas = 1;
+      } else {
+        boletas = 0;
+      }
+
+      const dirEntry = allKeyValues.find(e =>
+        (e.keyLower.includes("direcc") || e.keyLower === "dir" || e.keyLower.includes("calle")) &&
+        typeof e.val === "string" && e.val.trim().length > 3
+      );
+      if (dirEntry) direccion = dirEntry.val.trim();
+
+      const lastPayDateKeys = [
+        "fechaultimopago", "fecultpago", "fec_ult_pago", "f_ult_pago",
+        "ultimopagofecha", "fechapago", "fecpago", "fec_pago", "fechacancelacion", "augdt"
+      ];
+      for (const dk of lastPayDateKeys) {
+        const match = allKeyValues.find(e => e.keyLower.includes(dk));
+        if (match) {
+          const pDate = parsePaymentDate(match.val);
+          if (pDate) { parsedPayDate = pDate; break; }
+        }
+      }
+
+      const lastPayAmountKeys = [
+        "montoultimopago", "montoultpago", "mto_ult_pago", "monto_ult_pago",
+        "ultimopagomonto", "ultimopago", "ult_pago", "ultpago", "montopagado", "importepagado"
+      ];
+      for (const ak of lastPayAmountKeys) {
+        const match = allKeyValues.find(e => e.keyLower.includes(ak));
+        if (match) {
+          const parsedAmt = parseCLP(match.val);
+          if (parsedAmt !== null && parsedAmt > 0) { montoUltimoPago = parsedAmt; break; }
+        }
+      }
+
+      return {
+        deuda: deuda ?? 0,
+        deudaPagoInfo,
+        ultBoleta: u,
+        antBoleta: a,
+        terBoleta: t,
+        boletas,
+        direccion,
+        fechaUltimoPago: parsedPayDate ? parsedPayDate.display : "-",
+        fechaPagoIso: parsedPayDate ? parsedPayDate.isoDate : null,
+        fechaPagoTs: parsedPayDate ? parsedPayDate.timestamp : null,
+        montoUltimoPago
+      };
+    }
+
+    /**
+     * Lógica original de detección de PAGADO restaurada (detecta pagos totales,
+     * abonos / cuota convenio cuando baja la deuda o boletas, y pagos posteriores a la revisión).
+     */
+    function classifyAccountAndUpdateHistory(clienteId, parsed, history) {
+      const nowMs = Date.now();
+      const nowTimeStr = new Date(nowMs).toLocaleTimeString("es-CL");
+      const prev = history[clienteId];
+
+      let paidNote = "";
+      let isPaidSinceLastCheck = false;
+
+      if (prev) {
+        const payDateChangedToNewer =
+          parsed.fechaPagoIso &&
+          prev.fechaPagoIso &&
+          parsed.fechaPagoIso !== prev.fechaPagoIso &&
+          (!parsed.fechaPagoTs || !prev.fechaPagoTs || parsed.fechaPagoTs > prev.fechaPagoTs);
+
+        const prevCheckStartOfDay = prev.firstCheckMs
+          ? new Date(new Date(prev.firstCheckMs).setHours(0, 0, 0, 0)).getTime()
+          : null;
+
+        const payDateIsAfterCheck =
+          parsed.fechaPagoTs &&
+          prevCheckStartOfDay &&
+          parsed.fechaPagoTs >= prevCheckStartOfDay &&
+          (prev.deuda > 0 || prev.fechaPagoIso !== parsed.fechaPagoIso);
+
+        const debtCleared = (prev.deuda > 0 || prev.boletas > 0) && parsed.deuda === 0 && parsed.boletas === 0;
+        const debtReduced = (parsed.deuda < prev.deuda) || (parsed.boletas < prev.boletas);
+
+        if (payDateChangedToNewer || payDateIsAfterCheck) {
+          isPaidSinceLastCheck = true;
+          const montoStr = parsed.montoUltimoPago ? ` ($${parsed.montoUltimoPago.toLocaleString("es-CL")})` : "";
+          paidNote = `Pago detectado el ${parsed.fechaUltimoPago}${montoStr}`;
+        } else if (debtCleared) {
+          isPaidSinceLastCheck = true;
+          paidNote = `Pagó total (Antes: $${prev.deuda.toLocaleString("es-CL")} / ${prev.boletas} bol.)`;
+        } else if (debtReduced) {
+          isPaidSinceLastCheck = true;
+          paidNote = `Abonó (Antes: $${prev.deuda.toLocaleString("es-CL")} → Ahora: $${parsed.deuda.toLocaleString("es-CL")})`;
+        } else if (prev.lastTag === "PAGADO") {
+          isPaidSinceLastCheck = true;
+          paidNote = prev.paidNote || "Pagado en revisión previa";
+        }
+      }
+
+      let tag = "AL DÍA";
+      let css = "tag-aldia";
+
+      if (isPaidSinceLastCheck) {
+        tag = "PAGADO";
+        css = "tag-pagado";
+      } else if (parsed.boletas >= 3) {
+        tag = "DESCONEXIÓN";
+        css = "tag-desconexion";
+      } else if (parsed.boletas >= 1 || parsed.deuda > 0) {
+        tag = "DETALLE";
+        css = "tag-detalle";
+      }
+
+      history[clienteId] = {
+        deuda: prev ? Math.max(prev.deuda, parsed.deuda) : parsed.deuda,
+        boletas: prev ? Math.max(prev.boletas, parsed.boletas) : parsed.boletas,
+        fechaPagoIso: prev?.fechaPagoIso || parsed.fechaPagoIso,
+        fechaPagoTs: prev?.fechaPagoTs || parsed.fechaPagoTs,
+        firstCheckMs: prev?.firstCheckMs || nowMs,
+        lastCheckMs: nowMs,
+        lastTag: tag,
+        paidNote
+      };
+      saveHistory(history);
+
+      return { tag, css, paidNote, lastCheckedStr: nowTimeStr };
+    }
+
+    async function querySingleAccount(medidor, cliente, direccionHint, history, isSelected = false) {
+      const [deudaCtaJson, detalleJson, pagoJson] = await Promise.all([
+        fetchDeudaPorCuenta(cliente).catch(e => ({ errorDeudaCta: String(e) })),
+        fetchDetalleCuenta(cliente).catch(e => ({ errorDetalle: String(e) })),
+        fetchPagoInfo(cliente).catch(e => ({ errorPago: String(e) }))
+      ]);
+
+      const parsed = extractAccountData(deudaCtaJson, detalleJson, pagoJson);
+      const finalDir = (direccionHint && direccionHint !== "-") ? direccionHint : (parsed.direccion || "-");
+      const statusInfo = classifyAccountAndUpdateHistory(cliente, parsed, history);
+
+      return {
+        selected: isSelected,
+        medidor,
+        cliente,
+        direccion: finalDir,
+        deuda: parsed.deuda,
+        deudaPagoInfo: parsed.deudaPagoInfo,
+        ultBoleta: parsed.ultBoleta,
+        antBoleta: parsed.antBoleta,
+        terBoleta: parsed.terBoleta,
+        boletas: parsed.boletas,
+        fechaUltimoPago: parsed.fechaUltimoPago,
+        montoUltimoPago: parsed.montoUltimoPago,
+        lastCheckedStr: statusInfo.lastCheckedStr,
+        tag: statusInfo.tag,
+        css: statusInfo.css,
+        paidNote: statusInfo.paidNote,
+        rawJson: {
+          consultarDeudaPorCuentaContrato: deudaCtaJson,
+          detalleCuentaContrato: detalleJson,
+          getPagoInfo: pagoJson
+        }
+      };
+    }
+
+    function setButtonsRunningState(running) {
+      isRunning = running;
+      document.getElementById("startBtn").disabled = running;
+      document.getElementById("stopBtn").disabled = !running;
+      const hasValidRows = resultsData.some(r => r.cliente && r.cliente !== "-");
+      document.getElementById("updateAllBtn").disabled = running || !hasValidRows;
+      document.getElementById("updateTopBtn").disabled = running || !hasValidRows;
+      document.getElementById("cleanAlDiaBtn").disabled = running || resultsData.length === 0;
+      document.getElementById("sortAddressBtn").disabled = running || resultsData.length <= 1;
+      updateSelectionButtons();
+    }
+
+    function updateSelectionButtons() {
+      const selectedCount = resultsData.filter(r => r.selected).length;
+      const delBtn = document.getElementById("deleteSelectedBtn");
+      delBtn.textContent = `🗑️ Eliminar Seleccionados (${selectedCount})`;
+      delBtn.disabled = isRunning || selectedCount === 0;
+
+      const selectAllBox = document.getElementById("selectAllCheckbox");
+      if (selectAllBox) {
+        selectAllBox.checked = resultsData.length > 0 && selectedCount === resultsData.length;
+        selectAllBox.indeterminate = selectedCount > 0 && selectedCount < resultsData.length;
+      }
+    }
+
+    function syncTextareaWithTable() {
+      const mode = document.getElementById("inputType").value;
+      const remaining = resultsData
+        .map(r => (mode === "medidor" && r.medidor !== "-") ? r.medidor : r.cliente)
+        .filter(v => v && v !== "-");
+      if (remaining.length > 0) {
+        document.getElementById("meters").value = [...new Set(remaining)].join("\n");
+      } else {
+        document.getElementById("meters").value = "";
+      }
+      updateTextareaCount();
+    }
+
+    function deleteSingleRow(index) {
+      if (isRunning) return;
+      resultsData.splice(index, 1);
+      syncTextareaWithTable();
+      renderTable();
+      updateSummary();
+      setButtonsRunningState(false);
+    }
+
+    function toggleRowSelection(index, checked) {
+      if (!resultsData[index]) return;
+      resultsData[index].selected = checked;
+      const tbody = document.getElementById("resultsBody");
+      if (tbody.children[index]) {
+        tbody.children[index].classList.toggle("selected-row", checked);
+      }
+      updateSelectionButtons();
+    }
+
+    function toggleSelectAll(checked) {
+      resultsData.forEach(r => (r.selected = checked));
+      renderTable();
+      updateSelectionButtons();
+    }
+
+    function deleteSelectedRows() {
+      if (isRunning) return;
+      const count = resultsData.filter(r => r.selected).length;
+      if (count === 0) return;
+      resultsData = resultsData.filter(r => !r.selected);
+      syncTextareaWithTable();
+      renderTable();
+      updateSummary();
+      setButtonsRunningState(false);
+      document.getElementById("progressText").textContent =
+        `🗑️ Se eliminaron ${count} registro(s). Quedan ${resultsData.length}.`;
+    }
+
+    function deleteNonDebtRows() {
+      if (isRunning) return;
+      const before = resultsData.length;
+      resultsData = resultsData.filter(r =>
+        r.tag === "DESCONEXIÓN" || r.tag === "DETALLE" || r.tag === "PAGADO"
+      );
+      const removed = before - resultsData.length;
+      syncTextareaWithTable();
+      renderTable();
+      updateSummary();
+      setButtonsRunningState(false);
+      document.getElementById("progressText").textContent =
+        `🧹 Se quitaron ${removed} cuenta(s) Al Día / Sin Datos. Quedan ${resultsData.length}.`;
+    }
+
+    async function startBatch() {
+      const mode = document.getElementById("inputType").value;
+      const rawInput = document.getElementById("meters").value;
+      const delayMs = parseInt(document.getElementById("delay").value || "450", 10);
+      const list = rawInput.split(/[\n,;\s]+/).map(m => m.trim()).filter(Boolean);
+
+      if (list.length === 0) return;
+
+      resultsData = [];
+      currentSortField = null;
+      updateSummary();
+      setButtonsRunningState(true);
+      document.getElementById("resultsBody").innerHTML = "";
+
+      const history = getHistory();
+
+      for (let i = 0; i < list.length; i++) {
+        if (!isRunning) break;
+        const itemInput = list[i];
+        document.getElementById("progressText").textContent =
+          `Consultando ${i + 1} de ${list.length} (${itemInput})...`;
+
+        try {
+          let accountsToQuery = [];
+
+          if (mode === "medidor") {
+            const medidorData = await fetchClienteByMedidor(itemInput);
+            const items = medidorData?.items || [];
+            if (items.length === 0) {
+              const rowObj = {
+                selected: false,
+                medidor: itemInput, cliente: "-", direccion: "Medidor no encontrado",
+                deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
+                fechaUltimoPago: "-", montoUltimoPago: null,
+                lastCheckedStr: new Date().toLocaleTimeString("es-CL"),
+                tag: "SIN DATOS", css: "tag-error", paidNote: "", rawJson: medidorData
+              };
+              resultsData.push(rowObj);
+              renderTable();
+              updateSummary();
+              continue;
+            }
+            accountsToQuery = items.map(it => ({
+              medidor: itemInput,
+              cliente: (it.cuentaContrato || "").replace(/^0+/, ""),
+              direccion: it.direccion || "-"
+            }));
+          } else {
+            accountsToQuery = [{
+              medidor: "-",
+              cliente: itemInput.replace(/^0+/, ""),
+              direccion: "-"
+            }];
+          }
+
+          for (const acc of accountsToQuery) {
+            if (!isRunning) break;
+            const rowObj = await querySingleAccount(acc.medidor, acc.cliente, acc.direccion, history, false);
+            resultsData.push(rowObj);
+            renderTable();
+            updateSummary();
+          }
+        } catch (err) {
+          const rowObj = {
+            selected: false,
+            medidor: itemInput, cliente: "-", direccion: "Error de red / CORS",
+            deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
+            fechaUltimoPago: "-", montoUltimoPago: null,
+            lastCheckedStr: new Date().toLocaleTimeString("es-CL"),
+            tag: "ERROR", css: "tag-error", paidNote: "", rawJson: { error: String(err) }
+          };
+          resultsData.push(rowObj);
+          renderTable();
+          updateSummary();
+        }
+
+        if (i < list.length - 1 && isRunning && delayMs > 0) {
+          await sleep(delayMs);
+        }
+      }
+
+      setButtonsRunningState(false);
+      document.getElementById("progressText").textContent =
+        `Finalizado (${resultsData.length} cuentas cargadas)`;
+    }
+
+    async function updateExistingTable() {
+      if (resultsData.length === 0 || isRunning) return;
+      const delayMs = parseInt(document.getElementById("delay").value || "450", 10);
+      setButtonsRunningState(true);
+
+      const history = getHistory();
+
+      for (let i = 0; i < resultsData.length; i++) {
+        if (!isRunning) break;
+        const current = resultsData[i];
+        if (!current.cliente || current.cliente === "-") continue;
+
+        highlightRowUpdating(i, true);
+        document.getElementById("progressText").textContent =
+          `🔄 Actualizando ${i + 1} de ${resultsData.length} (Cliente: ${current.cliente})...`;
+
+        try {
+          const updatedRow = await querySingleAccount(
+            current.medidor, current.cliente, current.direccion, history, current.selected
+          );
+          resultsData[i] = updatedRow;
+          renderTable();
+          updateSummary();
+        } catch (e) {
+          highlightRowUpdating(i, false);
+        }
+
+        if (i < resultsData.length - 1 && isRunning && delayMs > 0) {
+          await sleep(delayMs);
+        }
+      }
+
+      setButtonsRunningState(false);
+      document.getElementById("progressText").textContent =
+        `✅ Tabla actualizada a las ${new Date().toLocaleTimeString("es-CL")}`;
+    }
+
+    async function updateSingleRow(index) {
+      if (isRunning) return;
+      const current = resultsData[index];
+      if (!current || !current.cliente || current.cliente === "-") return;
+
+      highlightRowUpdating(index, true);
+      const history = getHistory();
+      try {
+        const updatedRow = await querySingleAccount(
+          current.medidor, current.cliente, current.direccion, history, current.selected
+        );
+        resultsData[index] = updatedRow;
+        renderTable();
+        updateSummary();
+      } catch (e) {
+        highlightRowUpdating(index, false);
+      }
+    }
+
+    function highlightRowUpdating(index, isUpdating) {
+      const tbody = document.getElementById("resultsBody");
+      const tr = tbody.children[index];
+      if (tr) tr.classList.toggle("updating-row", isUpdating);
+    }
+
+    function stopBatch() { isRunning = false; }
+
+    function extractBillsFromUltimasBoletas(listaBoletasData, slData, detalleData, rowFallback) {
+      const foundDocs = [];
+      const seenOpbels = new Set();
+
+      const extractFromSingleDocObj = (node) => {
+        if (!node || typeof node !== "object" || Array.isArray(node)) return null;
+        const lowerMap = {};
+        for (const [k, v] of Object.entries(node)) {
+          lowerMap[k.toLowerCase().replace(/_/g, "")] = v;
+        }
+
+        let rawOpbel =
+          lowerMap["opbel"] ??
+          lowerMap["nrodocumento"] ??
+          lowerMap["numerodocumento"] ??
+          lowerMap["numdocumento"] ??
+          lowerMap["documento"] ??
+          lowerMap["nrodoc"] ??
+          lowerMap["nroboleta"] ??
+          lowerMap["numeroboleta"] ??
+          lowerMap["folio"] ??
+          lowerMap["belnr"] ??
+          lowerMap["vbeln"] ??
+          lowerMap["id"];
+
+        if (rawOpbel === undefined || rawOpbel === null || String(rawOpbel).trim() === "") {
+          for (const [k, v] of Object.entries(node)) {
+            const kl = k.toLowerCase();
+            if (kl.includes("cta") || kl.includes("cuenta") || kl.includes("cliente") || kl.includes("monto") || kl.includes("total") || kl.includes("fec")) continue;
+            const s = String(v ?? "").trim();
+            if (/^0*\d{8,12}$/.test(s)) {
+              rawOpbel = s;
+              break;
+            }
+          }
+        }
+
+        if (rawOpbel === undefined || rawOpbel === null || String(rawOpbel).trim() === "") return null;
+        const cleanDigits = String(rawOpbel).trim().replace(/[^0-9]/g, "");
+        if (cleanDigits.length < 5) return null;
+
+        const paddedOpbel = cleanDigits.padStart(12, "0");
+
+        const rawTitle =
+          node.title ??
+          node.Title ??
+          lowerMap["title"] ??
+          lowerMap["titulo"] ??
+          lowerMap["descripcion"] ??
+          lowerMap["glosa"] ??
+          lowerMap["concepto"] ??
+          lowerMap["tipodoc"] ??
+          lowerMap["tipodocumento"] ??
+          "DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024";
+
+        const rawFechaEmision =
+          node.fechaEmision ??
+          node.FechaEmision ??
+          lowerMap["fechaemision"] ??
+          lowerMap["fecemision"] ??
+          lowerMap["fecha"] ??
+          lowerMap["bldat"] ??
+          lowerMap["budat"] ??
+          lowerMap["fechadocumento"] ??
+          "-";
+
+        const rawFechaVenc =
+          node.fechaVencimiento ??
+          lowerMap["fechavencimiento"] ??
+          lowerMap["fecvencimiento"] ??
+          lowerMap["vencimiento"] ??
+          lowerMap["faedn"] ??
+          "-";
+
+        const parsedEmis = parsePaymentDate(rawFechaEmision);
+        const parsedVenc = parsePaymentDate(rawFechaVenc);
+
+        const rawMonto =
+          lowerMap["monto"] ??
+          lowerMap["montototal"] ??
+          lowerMap["total"] ??
+          lowerMap["importe"] ??
+          lowerMap["betrw"] ??
+          lowerMap["wrbtr"] ??
+          lowerMap["saldo"] ??
+          lowerMap["valor"] ??
+          0;
+
+        const rawEstado =
+          lowerMap["estado"] ??
+          lowerMap["estadoboleta"] ??
+          lowerMap["estadopago"] ??
+          lowerMap["status"] ??
+          lowerMap["situacion"] ??
+          "Emitida";
+
+        return {
+          opbel: paddedOpbel,
+          rawOpbel: String(rawOpbel).trim(),
+          title: String(rawTitle).trim(),
+          fechaEmision: parsedEmis ? parsedEmis.display : String(rawFechaEmision).trim(),
+          fechaVencimiento: parsedVenc ? parsedVenc.display : String(rawFechaVenc).trim(),
+          monto: parseCLP(rawMonto) ?? 0,
+          estado: String(rawEstado).trim()
+        };
+      };
+
+      const scanTree = (node) => {
+        if (!node || typeof node !== "object") return;
+        if (Array.isArray(node)) {
+          node.forEach(item => {
+            const doc = extractFromSingleDocObj(item);
+            if (doc && !seenOpbels.has(doc.opbel)) {
+              seenOpbels.add(doc.opbel);
+              foundDocs.push(doc);
+            } else {
+              scanTree(item);
+            }
+          });
+          return;
+        }
+
+        const directDoc = extractFromSingleDocObj(node);
+        if (directDoc && !seenOpbels.has(directDoc.opbel)) {
+          seenOpbels.add(directDoc.opbel);
+          foundDocs.push(directDoc);
+        }
+
+        for (const val of Object.values(node)) {
+          if (val && typeof val === "object") scanTree(val);
+        }
+      };
+
+      scanTree(listaBoletasData);
+      scanTree(slData);
+      scanTree(detalleData);
+
+      if (foundDocs.length === 0 && rowFallback) {
+        const bills = [
+          { label: "1ra Boleta (ultBoleta - Total Actual)", amount: rowFallback.ultBoleta },
+          { label: "2da Boleta (antBoleta - Anterior)", amount: rowFallback.antBoleta },
+          { label: "3ra Boleta (terBoleta - Tercera)", amount: rowFallback.terBoleta }
+        ];
+        bills.forEach((b, idx) => {
+          foundDocs.push({
+            opbel: "-",
+            rawOpbel: "-",
+            title: b.label,
+            fechaEmision: "-",
+            fechaVencimiento: "-",
+            monto: b.amount || 0,
+            estado: (b.amount || 0) > 0 ? `Boleta #${idx + 1} Impaga` : "Sin saldo ($0)"
+          });
+        });
+      }
+
+      return foundDocs;
+    }
+
+    function toggleDocsRawJson() {
+      const pre = document.getElementById("docsRawJsonPre");
+      if (pre.style.display === "none") {
+        pre.style.display = "block";
+        pre.textContent = JSON.stringify(lastDocsModalRawJson, null, 2);
+      } else {
+        pre.style.display = "none";
+      }
+    }
+
+    async function openAccountDocuments(index) {
+      const row = resultsData[index];
+      if (!row || !row.cliente || row.cliente === "-") return;
+
+      const modal = document.getElementById("docsModal");
+      const loading = document.getElementById("docsModalLoading");
+      const wrapper = document.getElementById("docsTableWrapper");
+      const tbody = document.getElementById("docsTableBody");
+      const title = document.getElementById("docsModalTitle");
+      const rawPre = document.getElementById("docsRawJsonPre");
+
+      const cleanClient = row.cliente.replace(/^0+/, "");
+      document.getElementById("manualPdfClient").value = cleanClient;
+
+      title.textContent = `📄 Últimas Boletas - Cliente ${cleanClient} (${row.direccion})`;
+      modal.style.display = "flex";
+      loading.style.display = "block";
+      wrapper.style.display = "none";
+      rawPre.style.display = "none";
+      tbody.innerHTML = "";
+
+      try {
+        const [listaBoletasData, slData] = await Promise.all([
+          fetchListaUltimasBoletas(cleanClient).catch(e => ({ errorListaBoletas: String(e) })),
+          fetchDetalleCuentaSL(cleanClient).catch(e => ({ errorSL: String(e) }))
+        ]);
+
+        lastDocsModalRawJson = {
+          consultarListaUltimasBoletas: listaBoletasData,
+          detalleCuentaContratoSL: slData
+        };
+
+        const docsList = extractBillsFromUltimasBoletas(
+          listaBoletasData,
+          slData,
+          row.rawJson?.detalleCuentaContrato,
+          row
+        );
+
+        loading.style.display = "none";
+        wrapper.style.display = "block";
+
+        if (docsList[0] && docsList[0].opbel !== "-") {
+          document.getElementById("manualPdfOpbel").value = docsList[0].opbel;
+          document.getElementById("manualPdfFecha").value =
+            docsList[0].fechaEmision !== "-" ? docsList[0].fechaEmision : "";
+          if (docsList[0].title) {
+            document.getElementById("manualPdfTitle").value = docsList[0].title;
+          }
+        }
+
+        docsList.forEach((doc, idx) => {
+          const tr = document.createElement("tr");
+          if (idx < 3) tr.classList.add("top3-bill");
+
+          const montoStr = "$" + Number(doc.monto || 0).toLocaleString("es-CL");
+          const hasValidOpbel = doc.opbel && doc.opbel !== "-";
+
+          tr.innerHTML = `
+            <td class="mono"><strong>${idx + 1}</strong> ${idx < 3 ? "⭐" : ""}</td>
+            <td class="mono"><strong>${doc.opbel}</strong></td>
+            <td>${doc.title}</td>
+            <td class="mono">${doc.fechaEmision}</td>
+            <td class="mono">${doc.fechaVencimiento}</td>
+            <td class="mono"><strong>${montoStr}</strong></td>
+            <td>${doc.estado}</td>
+            <td>
+              ${hasValidOpbel
+                ? `<button class="detail-btn" style="padding:0.35rem 0.65rem;font-size:0.75rem" onclick='downloadPdfDoc("${cleanClient}", "${doc.opbel}", ${JSON.stringify(doc.title)}, "${doc.fechaEmision}")'>📥 Detalle PDF</button>`
+                : `<span style="color:var(--muted);font-size:0.75rem">Haz clic en Ver JSON arriba</span>`
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        loading.style.display = "none";
+        wrapper.style.display = "block";
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--danger)">Error al consultar boletas: ${err.message}</td></tr>`;
+      }
+    }
+
+    function triggerManualPdf() {
+      const client = document.getElementById("manualPdfClient").value.trim();
+      const opbel = document.getElementById("manualPdfOpbel").value.trim();
+      const fecha = document.getElementById("manualPdfFecha").value.trim();
+      const title = document.getElementById("manualPdfTitle").value.trim();
+      if (!client || !opbel) {
+        alert("Ingresa el N° de Cliente y el N° de Documento (OPBEL).");
+        return;
+      }
+      downloadPdfDoc(client, opbel, title, fecha);
+    }
+
+    async function downloadPdfDoc(cuentaContrato, opbel, title, fechaEmision) {
+      const cleanClient = String(cuentaContrato).trim().replace(/^0+/, "");
+      const paddedOpbel = String(opbel).trim().replace(/[^0-9]/g, "").padStart(12, "0");
+      const safeFecha = (!fechaEmision || fechaEmision === "-") ? "" : String(fechaEmision).trim();
+      const safeTitle = title || "DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024";
+
+      try {
+        const res = await fetch(URL_PDF, {
+          method: "POST",
+          headers: {
+            ...COMMON_HEADERS,
+            "responsetype": "arraybuffer"
+          },
+          body: JSON.stringify({
+            Documentos: {
+              OPBEL: paddedOpbel
+            },
+            Sociedad: "E200",
+            cuentaContrato: cleanClient,
+            signedIn: false,
+            url: "OFVCGE_P",
+            title: safeTitle,
+            fechaEmision: safeFecha
+          })
+        });
+
+        const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+
+        const isRawPdf =
+          bytes.length > 4 &&
+          bytes[0] === 0x25 &&
+          bytes[1] === 0x50 &&
+          bytes[2] === 0x44 &&
+          bytes[3] === 0x46;
+
+        let pdfBlob = null;
+
+        if (isRawPdf) {
+          pdfBlob = new Blob([buffer], { type: "application/pdf" });
+        } else {
+          const textResponse = new TextDecoder("utf-8").decode(bytes).trim();
+
+          try {
+            const jsonObj = JSON.parse(textResponse);
+            lastDocsModalRawJson = { respuestaPDF: jsonObj, ...lastDocsModalRawJson };
+
+            let encodedPdf = null;
+            const findPdfStr = (obj) => {
+              if (!obj || typeof obj !== "object") return;
+              for (const val of Object.values(obj)) {
+                if (typeof val === "string" && (val.startsWith("JVBERi") || val.startsWith("25504446") || val.length > 500)) {
+                  encodedPdf = val;
+                  return;
+                } else if (val && typeof val === "object") {
+                  findPdfStr(val);
+                }
+              }
+            };
+            findPdfStr(jsonObj);
+
+            if (encodedPdf && encodedPdf.startsWith("25504446")) {
+              const cleanHex = encodedPdf.replace(/[^0-9a-fA-F]/g, "");
+              const pdfBytes = new Uint8Array(cleanHex.length / 2);
+              for (let i = 0; i < cleanHex.length; i += 2) {
+                pdfBytes[i / 2] = parseInt(cleanHex.substring(i, i + 2), 16);
+              }
+              pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+            } else if (encodedPdf) {
+              const cleanB64 = encodedPdf.replace(/^data:application\/pdf;base64,/, "").replace(/\s/g, "");
+              const binStr = atob(cleanB64);
+              const pdfBytes = new Uint8Array(binStr.length);
+              for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
+              pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+            } else {
+              alert("Respuesta JSON del servidor PDF (revisa 'Ver JSON' arriba):\n\n" + textResponse.slice(0, 450));
+              return;
+            }
+          } catch {
+            if (textResponse.startsWith("JVBERi")) {
+              const binStr = atob(textResponse.replace(/\s/g, ""));
+              const pdfBytes = new Uint8Array(binStr.length);
+              for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
+              pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+            } else {
+              alert("Respuesta inesperada del servidor PDF:\n\n" + textResponse.slice(0, 450));
+              return;
+            }
+          }
+        }
+
+        if (pdfBlob) {
+          const blobUrl = URL.createObjectURL(pdfBlob);
+          window.open(blobUrl, "_blank");
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = `Detalle_CGE_${cleanClient}_${paddedOpbel}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      } catch (err) {
+        alert("Error de red al descargar el PDF: " + err.message);
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("resultsBody");
+      tbody.innerHTML = "";
+
+      resultsData.forEach((row, index) => {
+        const tr = document.createElement("tr");
+        if (row.selected) tr.classList.add("selected-row");
+
+        const deudaFormatted = "$" + Number(row.deuda || 0).toLocaleString("es-CL");
+        const antFormatted = "$" + Number(row.antBoleta || 0).toLocaleString("es-CL");
+        const terFormatted = "$" + Number(row.terBoleta || 0).toLocaleString("es-CL");
+        const pagoInfoExtra = (row.deudaPagoInfo > 0 && row.deudaPagoInfo !== row.deuda)
+          ? ` | Portal: $${Number(row.deudaPagoInfo).toLocaleString("es-CL")}`
+          : "";
+
+        const ultPagoMontoStr = row.montoUltimoPago
+          ? "$" + Number(row.montoUltimoPago).toLocaleString("es-CL")
+          : "";
+
+        const portalUrl = `https://sucursalvirtual.cge.cl/detalle-de-cuenta?ctacto=${row.cliente}`;
+        const clienteCellHtml = (row.cliente && row.cliente !== "-")
+          ? `<a href="${portalUrl}" target="_blank" class="client-link" title="Abrir en Sucursal Virtual CGE">🔗 ${row.cliente}</a>`
+          : `-`;
+
+        tr.innerHTML = `
+          <td>
+            <input type="checkbox" ${row.selected ? "checked" : ""} onchange="toggleRowSelection(${index}, this.checked)" />
+          </td>
+          <td class="mono">${row.medidor}</td>
+          <td class="mono">${clienteCellHtml}</td>
+          <td>${row.direccion}</td>
+          <td class="mono">
+            <strong>${deudaFormatted}</strong>
+            <span class="sub-muted">2da: ${antFormatted} | 3ra: ${terFormatted}${pagoInfoExtra}</span>
+          </td>
+          <td class="mono"><strong>${row.boletas}</strong> ${row.boletas === 1 ? "boleta" : "boletas"}</td>
+          <td class="mono">
+            ${row.fechaUltimoPago}
+            ${ultPagoMontoStr ? `<span class="sub-muted">${ultPagoMontoStr}</span>` : ""}
+          </td>
+          <td class="mono" style="color:var(--muted);font-size:0.8rem">${row.lastCheckedStr || "-"}</td>
+          <td>
+            <span class="tag ${row.css}" onclick="openAccountDocuments(${index})" title="Haz clic para ver las últimas boletas y descargar PDF">${row.tag} 📄</span>
+            ${row.paidNote ? `<span class="prev-change">✔ ${row.paidNote}</span>` : ""}
+          </td>
+          <td>
+            <div class="btn-row" style="flex-wrap:nowrap">
+              <button class="update-btn" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="updateSingleRow(${index})" title="Actualizar esta cuenta">🔄</button>
+              <button class="detail-btn" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="openAccountDocuments(${index})" title="Ver las boletas y descargar PDF">📄</button>
+              <button class="secondary" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="showJson(${index})" title="Ver JSON Crudo">🔍</button>
+              <button class="danger" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="deleteSingleRow(${index})" title="Eliminar fila">🗑️</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      const sortBtn = document.getElementById("sortAddressBtn");
+      if (sortBtn) sortBtn.disabled = isRunning || resultsData.length <= 1;
+
+      updateSelectionButtons();
+    }
+
+    function showJson(index) {
+      const row = resultsData[index];
+      if (!row) return;
+      document.getElementById("modalTitle").textContent =
+        `JSON Crudo - Cliente ${row.cliente}`;
+      document.getElementById("modalContent").textContent =
+        JSON.stringify(row.rawJson, null, 2);
+      document.getElementById("jsonModal").style.display = "flex";
+    }
+
+    function copyModalJson() {
+      const txt = document.getElementById("modalContent").textContent;
+      navigator.clipboard.writeText(txt);
+      alert("JSON copiado al portapapeles.");
+    }
+
+    function updateSummary() {
+      document.getElementById("countTotal").textContent = resultsData.length;
+      document.getElementById("countDesc").textContent = resultsData.filter(r => r.tag === "DESCONEXIÓN").length;
+      document.getElementById("countDet").textContent = resultsData.filter(r => r.tag === "DETALLE").length;
+      document.getElementById("countPag").textContent = resultsData.filter(r => r.tag === "PAGADO").length;
+      document.getElementById("countAlDia").textContent = resultsData.filter(r => r.tag === "AL DÍA").length;
+    }
+
+    function copyAccounts() {
+      const header = "Medidor\tCliente\tDireccion\tDeudaTotal(ultBoleta)\tantBoleta\tterBoleta\tBoletas\tFechaUltimoPago\tMontoUltimoPago\tUltimaRevision\tEstado\tNota\n";
+      const text = resultsData
+        .map(r => `${r.medidor}\t${r.cliente}\t${r.direccion}\t${r.deuda}\t${r.antBoleta}\t${r.terBoleta}\t${r.boletas}\t${r.fechaUltimoPago}\t${r.montoUltimoPago || ""}\t${r.lastCheckedStr || ""}\t${r.tag}\t${r.paidNote}`)
+        .join("\n");
+      navigator.clipboard.writeText(header + text);
+      alert("¡Tabla copiada! Pégala directamente en Excel.");
+    }
+
+    function exportCSV() {
+      if (resultsData.length === 0) return;
+      const header = "Medidor,Cliente,Direccion,DeudaTotal_ultBoleta,antBoleta,terBoleta,CantidadBoletas,FechaUltimoPago,MontoUltimoPago,UltimaRevision,Estado,NotaPago\n";
+      const rows = resultsData.map(r =>
+        `"${r.medidor}","${r.cliente}","${(r.direccion || "").replace(/"/g, '""')}","${r.deuda}","${r.antBoleta}","${r.terBoleta}","${r.boletas}","${r.fechaUltimoPago}","${r.montoUltimoPago || ""}","${r.lastCheckedStr || ""}","${r.tag}","${(r.paidNote || "").replace(/"/g, '""')}"`
+      ).join("\n");
+      const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "reporte_deuda_cge.csv";
+      a.click();
+    }
+  </script>
+</body>
+</html>
