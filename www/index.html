@@ -2,10 +2,12 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Monitor de Deuda, Corte y Pagos CGE</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>Monitor CGE v1.02</title>
   <!-- SheetJS para leer archivos Excel (.xlsx, .xls) y CSV -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- PDF.js para visualizar la última boleta dentro de la app sin descargar archivos -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <style>
     :root {
       --bg: #0f172a; --card: #1e293b; --border: #334155;
@@ -14,20 +16,30 @@
       --danger: #ef4444; --danger-bg: #7f1d1d; --purple: #8b5cf6; --purple-hover: #7c3aed;
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 1.5rem; background: var(--bg); color: var(--text); max-width: 1600px; margin-inline: auto; }
-    h1 { margin-top: 0; font-size: 1.4rem; display: flex; align-items: center; gap: 0.5rem; }
-    .grid { display: grid; grid-template-columns: 330px 1fr; gap: 1.25rem; align-items: start; }
+    body { margin: 0; padding: 1rem; background: var(--bg); color: var(--text); max-width: 1600px; margin-inline: auto; }
+    h1 { margin: 0 0 0.9rem 0; font-size: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+    .version-badge { font-size: 0.72rem; background: #0b1120; border: 1px solid var(--border); color: #38bdf8; padding: 0.2rem 0.55rem; border-radius: 999px; }
+    .grid { display: grid; grid-template-columns: 330px 1fr; gap: 1.15rem; align-items: start; }
     @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
-    label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.4rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+    .panel-toggle {
+      display: none; width: 100%; justify-content: space-between; align-items: center;
+      background: #0b1120; border: 1px solid var(--border); color: var(--text);
+      padding: 0.65rem 0.85rem; border-radius: 8px; font-size: 0.88rem; margin-bottom: 0.75rem;
+    }
+    @media (max-width: 980px) {
+      .panel-toggle { display: flex; }
+      .input-body.collapsed { display: none; }
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
     textarea, input[type="number"], input[type="text"], select {
       width: 100%; background: #0b1120; border: 1px solid var(--border); color: var(--text);
-      border-radius: 6px; padding: 0.65rem; font-family: monospace; font-size: 0.88rem; margin-bottom: 0.9rem;
+      border-radius: 6px; padding: 0.6rem; font-family: monospace; font-size: 0.88rem; margin-bottom: 0.8rem;
     }
-    textarea { height: 180px; resize: vertical; }
+    textarea { height: 150px; resize: vertical; }
     .file-drop {
       border: 1.5px dashed var(--border); background: #0b1120; border-radius: 8px;
-      padding: 0.85rem; text-align: center; cursor: pointer; margin-bottom: 0.9rem;
+      padding: 0.75rem; text-align: center; cursor: pointer; margin-bottom: 0.8rem;
       transition: border-color 0.15s, background 0.15s;
     }
     .file-drop:hover, .file-drop.dragover {
@@ -36,13 +48,13 @@
     .file-drop input[type="file"] { display: none; }
     .excel-panel {
       display: none; background: #0b1120; border: 1px solid var(--border);
-      border-radius: 8px; padding: 0.75rem; margin-bottom: 0.9rem;
+      border-radius: 8px; padding: 0.7rem; margin-bottom: 0.8rem;
     }
-    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .btn-row { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; }
     button {
       background: var(--accent); color: white; border: none; border-radius: 6px;
-      padding: 0.55rem 0.85rem; font-weight: 600; font-size: 0.82rem; cursor: pointer;
-      transition: opacity 0.15s, background 0.15s;
+      padding: 0.55rem 0.8rem; font-weight: 600; font-size: 0.8rem; cursor: pointer;
+      transition: opacity 0.15s, background 0.15s; touch-action: manipulation;
     }
     button:hover:not(:disabled) { background: var(--accent-hover); }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -54,28 +66,27 @@
     button.secondary:hover:not(:disabled) { background: #475569; }
     button.danger { background: var(--danger-bg); color: #fecaca; }
     button.danger:hover:not(:disabled) { background: #991b1b; }
-    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-size: 0.88rem; color: var(--muted); flex-wrap: wrap; gap: 0.5rem; }
-    .summary-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
-    .pill { background: #0b1120; border: 1px solid var(--border); padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.8rem; }
+    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; font-size: 0.84rem; color: var(--muted); flex-wrap: wrap; gap: 0.5rem; }
+    .summary-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem; align-items: center; }
+    .pill { background: #0b1120; border: 1px solid var(--border); padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.76rem; }
     table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
     th, td { text-align: left; padding: 0.65rem 0.45rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
     th { color: var(--muted); font-weight: 600; font-size: 0.73rem; text-transform: uppercase; user-select: none; }
     th.sortable { cursor: pointer; transition: color 0.15s; }
     th.sortable:hover { color: var(--text); }
     th.active-sort { color: #38bdf8; }
-    tr.updating-row { background: rgba(59, 130, 246, 0.12); }
-    tr.selected-row { background: rgba(239, 68, 68, 0.08); }
-    tr.top3-bill { background: rgba(139, 92, 246, 0.09); }
-    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
-    .mono { font-family: monospace; font-size: 0.9rem; }
+    tr.updating-row { background: rgba(59, 130, 246, 0.14) !important; }
+    tr.selected-row { background: rgba(239, 68, 68, 0.1) !important; }
+    input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); }
+    .mono { font-family: monospace; font-size: 0.88rem; }
     .sub-muted { display: block; font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
     .client-link {
-      color: #38bdf8; text-decoration: none; font-weight: 600;
-      display: inline-flex; align-items: center; gap: 3px;
+      color: #38bdf8; text-decoration: none; font-weight: 700;
+      display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
     }
     .client-link:hover { text-decoration: underline; color: #60a5fa; }
     .tag {
-      display: inline-block; padding: 0.25rem 0.6rem; border-radius: 6px;
+      display: inline-block; padding: 0.28rem 0.6rem; border-radius: 6px;
       font-weight: 700; font-size: 0.74rem; letter-spacing: 0.03em; text-transform: uppercase;
       cursor: pointer;
     }
@@ -85,100 +96,141 @@
     .tag-pagado { background: rgba(34, 197, 94, 0.25); color: #4ade80; border: 1px solid #22c55e; }
     .tag-aldia { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid #475569; }
     .tag-error { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
-    .prev-change { display: block; font-size: 0.72rem; color: #4ade80; margin-top: 3px; font-weight: 600; }
-    #jsonModal, #docsModal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
-      align-items: center; justify-content: center; padding: 1.5rem; z-index: 50;
+    .prev-change { display: block; font-size: 0.74rem; color: #4ade80; margin-top: 4px; font-weight: 600; }
+
+    /* Diseño tipo tarjeta táctil en pantallas móviles */
+    @media (max-width: 768px) {
+      body { padding: 0.6rem; }
+      .card { padding: 0.8rem; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tbody tr {
+        background: #0b1120; border: 1px solid var(--border); border-radius: 10px;
+        padding: 0.75rem; margin-bottom: 0.75rem; position: relative;
+      }
+      tbody td {
+        border: none; padding: 0.22rem 0; display: flex; justify-content: space-between;
+        align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      }
+      tbody td::before {
+        content: attr(data-label);
+        font-size: 0.7rem; text-transform: uppercase; color: var(--muted); font-weight: 600;
+      }
+      tbody td.td-select { position: absolute; top: 0.75rem; right: 0.75rem; padding: 0; }
+      tbody td.td-select::before, tbody td.td-actions::before, tbody td.td-dir::before { display: none; }
+      tbody td.td-cliente { padding-right: 2rem; font-size: 1rem; justify-content: flex-start; }
+      tbody td.td-dir { font-weight: 600; color: #f1f5f9; font-size: 0.9rem; padding-top: 0.35rem; padding-bottom: 0.35rem; border-bottom: 1px solid #1e293b; margin-bottom: 0.25rem; }
+      tbody td.td-status { flex-direction: column; align-items: flex-start; margin-top: 0.3rem; }
+      tbody td.td-actions { margin-top: 0.55rem; padding-top: 0.55rem; border-top: 1px solid #1e293b; }
+      tbody td.td-actions .btn-row { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+      tbody td.td-actions button { padding: 0.5rem 0.2rem; font-size: 0.82rem; text-align: center; }
+    }
+
+    #jsonModal, #pdfModal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      align-items: center; justify-content: center; padding: 0.75rem; z-index: 50;
     }
     .modal-box {
       background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-      max-width: 1040px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; padding: 1.25rem;
+      max-width: 1000px; width: 100%; max-height: 94vh; display: flex; flex-direction: column; padding: 0.9rem;
     }
     pre {
-      background: #0b1120; padding: 1rem; border-radius: 6px; overflow: auto;
-      font-size: 0.8rem; color: #38bdf8; margin: 0.75rem 0; flex: 1;
+      background: #0b1120; padding: 0.85rem; border-radius: 6px; overflow: auto;
+      font-size: 0.78rem; color: #38bdf8; margin: 0.6rem 0; flex: 1;
     }
-    .manual-pdf-bar {
-      background: #0b1120; border: 1px solid var(--border); border-radius: 8px;
-      padding: 0.75rem; margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end;
+    #pdfCanvasContainer {
+      flex: 1; overflow: auto; background: #0b1120; border-radius: 8px;
+      padding: 0.5rem; text-align: center; -webkit-overflow-scrolling: touch;
     }
-    .manual-pdf-bar div { flex: 1; min-width: 140px; }
-    .manual-pdf-bar input { margin-bottom: 0; padding: 0.45rem 0.6rem; font-size: 0.82rem; }
+    #pdfCanvasContainer canvas {
+      max-width: 100%; height: auto; border-radius: 4px; margin-bottom: 0.65rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5); background: white;
+    }
   </style>
 </head>
 <body>
-  <h1>⚡ Monitor Masivo de Medidores, Deuda y Último Pago (CGE)</h1>
+  <h1>
+    <span>⚡ Monitor Deuda y Pagos CGE</span>
+    <span class="version-badge">v1.02 • Memoria Nativa</span>
+  </h1>
 
   <div class="grid">
     <div class="card">
-      <label for="inputType">Modo de Entrada</label>
-      <select id="inputType">
-        <option value="medidor">Por Número de Medidor (Busca Cliente + Deuda)</option>
-        <option value="cliente">Directo por Número de Cliente (ej: 2480548)</option>
-      </select>
+      <button class="panel-toggle" id="panelToggleBtn" onclick="toggleInputPanel()">
+        <span>⚙️ Configurar Lista / Importar Excel</span>
+        <span id="panelToggleIcon">▲</span>
+      </button>
 
-      <label>Importar Planilla (.xlsx, .xls, .csv)</label>
-      <div class="file-drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" />
-        <div style="font-size:0.85rem;font-weight:600;color:var(--text)" id="fileDropTitle">📂 Haz clic o arrastra tu Excel / CSV aquí</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:3px">Detecta columnas de medidores o clientes automáticamente</div>
-      </div>
+      <div class="input-body" id="inputBody">
+        <label for="inputType">Modo de Entrada</label>
+        <select id="inputType" onchange="persistCurrentState()">
+          <option value="medidor">Por Número de Medidor (Busca Cliente + Deuda)</option>
+          <option value="cliente">Directo por Número de Cliente (ej: 2480548)</option>
+        </select>
 
-      <div class="excel-panel" id="excelPanel">
-        <label for="sheetSelect" id="sheetLabel" style="display:none">Hoja del archivo</label>
-        <select id="sheetSelect" style="display:none;margin-bottom:0.6rem" onchange="onSheetChange()"></select>
-
-        <label for="columnSelect">Columna a extraer</label>
-        <select id="columnSelect" style="margin-bottom:0.5rem" onchange="previewSelectedColumn()"></select>
-
-        <div id="excelStats" style="font-size:0.76rem;color:#4ade80;margin-bottom:0.6rem"></div>
-        <div class="btn-row">
-          <button onclick="applyExcelColumn(false)">Reemplazar Lista</button>
-          <button class="secondary" onclick="applyExcelColumn(true)">➕ Agregar a Lista</button>
+        <label>Importar Planilla (.xlsx, .xls, .csv)</label>
+        <div class="file-drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" />
+          <div style="font-size:0.84rem;font-weight:600;color:var(--text)" id="fileDropTitle">📂 Toca para cargar tu Excel / CSV</div>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">Detecta medidores o clientes automáticamente</div>
         </div>
-      </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem">
-        <label for="meters" style="margin:0">Listado (<span id="listCount">1</span> ítems)</label>
-        <button class="secondary" style="padding:0.2rem 0.5rem;font-size:0.72rem" onclick="clearTextarea()">Limpiar texto</button>
-      </div>
-      <textarea id="meters" oninput="updateTextareaCount()" placeholder="877049&#10;2480548&#10;1750924">2480548</textarea>
+        <div class="excel-panel" id="excelPanel">
+          <label for="sheetSelect" id="sheetLabel" style="display:none">Hoja del archivo</label>
+          <select id="sheetSelect" style="display:none;margin-bottom:0.5rem" onchange="onSheetChange()"></select>
 
-      <label for="delay">Pausa entre consultas (ms)</label>
-      <input type="number" id="delay" value="450" min="100" step="100" />
+          <label for="columnSelect">Columna a extraer</label>
+          <select id="columnSelect" style="margin-bottom:0.5rem" onchange="previewSelectedColumn()"></select>
 
-      <div class="btn-row">
-        <button id="startBtn" onclick="startBatch()">Consultar Listado</button>
-        <button id="updateAllBtn" class="update-btn" onclick="updateExistingTable()" disabled>🔄 Actualizar Tabla</button>
-        <button id="stopBtn" class="secondary" onclick="stopBatch()" disabled>Detener</button>
-      </div>
+          <div id="excelStats" style="font-size:0.75rem;color:#4ade80;margin-bottom:0.55rem"></div>
+          <div class="btn-row">
+            <button onclick="applyExcelColumn(false)">Reemplazar Lista</button>
+            <button class="secondary" onclick="applyExcelColumn(true)">➕ Agregar</button>
+          </div>
+        </div>
 
-      <hr style="border:0; border-top:1px solid var(--border); margin: 1rem 0;" />
-      <label>Historial de Revisión Guardado</label>
-      <div class="btn-row">
-        <button class="secondary danger" onclick="clearHistory()">Reiniciar Línea Base</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+          <label for="meters" style="margin:0">Listado (<span id="listCount">1</span> ítems)</label>
+          <button class="secondary" style="padding:0.2rem 0.5rem;font-size:0.72rem" onclick="clearTextarea()">Limpiar texto</button>
+        </div>
+        <textarea id="meters" oninput="onMetersInput()" placeholder="877049&#10;2480548&#10;1750924">2480548</textarea>
+
+        <label for="delay">Pausa entre consultas (ms)</label>
+        <input type="number" id="delay" value="450" min="100" step="100" />
+
+        <div class="btn-row">
+          <button id="startBtn" onclick="startBatch()">Consultar Listado</button>
+          <button id="updateAllBtn" class="update-btn" onclick="updateExistingTable()" disabled>🔄 Actualizar Tabla</button>
+          <button id="stopBtn" class="secondary" onclick="stopBatch()" disabled>Detener</button>
+        </div>
+
+        <hr style="border:0; border-top:1px solid var(--border); margin: 0.9rem 0;" />
+        <label>Gestión de Memoria Guardada</label>
+        <div class="btn-row">
+          <button class="secondary danger" onclick="clearHistory()">Reiniciar Línea Base</button>
+          <button class="secondary danger" onclick="clearAllSavedData()">🗑️ Borrar Todo</button>
+        </div>
       </div>
     </div>
 
     <div class="card">
       <div class="status-bar">
-        <span id="progressText">Listo para consultar</span>
+        <span id="progressText">Cargando memoria...</span>
         <div class="btn-row">
-          <button id="sortAddressBtn" class="secondary" onclick="sortTableBy('direccion')" disabled title="Ordenar alfabéticamente por calle y número">🔤 Ordenar Dirección (A-Z)</button>
-          <button id="deleteSelectedBtn" class="danger" onclick="deleteSelectedRows()" disabled>🗑️ Eliminar Seleccionados (0)</button>
-          <button id="cleanAlDiaBtn" class="secondary" onclick="deleteNonDebtRows()" disabled title="Elimina las filas Al Día o Sin Datos">🧹 Quitar Al Día / Errores</button>
+          <button id="sortAddressBtn" class="secondary" onclick="sortTableBy('direccion')" disabled>🔤 Dirección (A-Z)</button>
+          <button id="deleteSelectedBtn" class="danger" onclick="deleteSelectedRows()" disabled>🗑️ Eliminar (0)</button>
+          <button id="cleanAlDiaBtn" class="secondary" onclick="deleteNonDebtRows()" disabled>🧹 Quitar Al Día</button>
           <button class="update-btn" id="updateTopBtn" onclick="updateExistingTable()" disabled>🔄 Actualizar Todos</button>
-          <button class="secondary" onclick="copyAccounts()">Copiar para Excel</button>
-          <button class="secondary" onclick="exportCSV()">Exportar CSV</button>
+          <button class="secondary" onclick="copyAccounts()">Copiar Tabla</button>
         </div>
       </div>
 
       <div class="summary-pills">
         <div class="pill">Total: <strong id="countTotal">0</strong></div>
-        <div class="pill" style="color:#f87171">Desconexión (3 bol.): <strong id="countDesc">0</strong></div>
-        <div class="pill" style="color:#fbbf24">Detalle (1-2 bol.): <strong id="countDet">0</strong></div>
+        <div class="pill" style="color:#f87171">Desconexión: <strong id="countDesc">0</strong></div>
+        <div class="pill" style="color:#fbbf24">Detalle: <strong id="countDet">0</strong></div>
         <div class="pill" style="color:#4ade80">Pagados: <strong id="countPag">0</strong></div>
-        <div class="pill" style="color:#cbd5e1">Al Día (0): <strong id="countAlDia">0</strong></div>
+        <div class="pill" style="color:#cbd5e1">Al Día: <strong id="countAlDia">0</strong></div>
       </div>
 
       <table>
@@ -190,9 +242,8 @@
             <th class="sortable" id="th-direccion" onclick="sortTableBy('direccion')">Dirección ↕</th>
             <th class="sortable" id="th-deuda" onclick="sortTableBy('deuda')">Deuda Total ↕</th>
             <th class="sortable" id="th-boletas" onclick="sortTableBy('boletas')">Boletas ↕</th>
-            <th>Último Pago</th>
             <th>Últ. Revisión</th>
-            <th class="sortable" id="th-tag" onclick="sortTableBy('tag')">Estado (Clic abre Boletas) ↕</th>
+            <th class="sortable" id="th-tag" onclick="sortTableBy('tag')">Estado (Toca = Últ. Boleta) ↕</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -215,60 +266,23 @@
     </div>
   </div>
 
-  <!-- Modal para listar las últimas Boletas y descargar PDF -->
-  <div id="docsModal" onclick="if(event.target===this)this.style.display='none'">
+  <!-- Modal Visor de Última Boleta PDF en Memoria (Sin descargar archivo al dispositivo) -->
+  <div id="pdfModal" onclick="if(event.target===this)closePdfModal()">
     <div class="modal-box">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
-        <strong id="docsModalTitle" style="font-size:1.05rem">📄 Últimas Boletas y Documentos PDF</strong>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.4rem">
+        <strong id="pdfModalTitle" style="font-size:0.95rem">📄 Última Boleta</strong>
         <div class="btn-row">
-          <button class="secondary" onclick="toggleDocsRawJson()">🔍 Ver JSON de consultarListaUltimasBoletas</button>
-          <button class="secondary" onclick="document.getElementById('docsModal').style.display='none'">Cerrar</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(-0.25)">🔍−</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(0.25)">🔍+</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="togglePdfRawJson()">JSON</button>
+          <button class="danger" style="padding:0.4rem 0.75rem" onclick="closePdfModal()">✕ Cerrar</button>
         </div>
       </div>
 
-      <div id="docsModalLoading" style="color:var(--muted);font-size:0.9rem;padding:1rem;text-align:center">
-        Consultando documentos y boletas...
-      </div>
-
-      <div id="docsTableWrapper" style="overflow-y:auto;max-height:55vh;display:none">
-        <table id="docsTable">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>N° Documento (OPBEL)</th>
-              <th>Título / Concepto</th>
-              <th>Fecha Emisión</th>
-              <th>Vencimiento</th>
-              <th>Monto</th>
-              <th>Estado</th>
-              <th>Acciones PDF</th>
-            </tr>
-          </thead>
-          <tbody id="docsTableBody"></tbody>
-        </table>
-      </div>
-
-      <div class="manual-pdf-bar">
-        <div>
-          <label>Cliente</label>
-          <input type="text" id="manualPdfClient" readonly />
-        </div>
-        <div>
-          <label>N° Documento (OPBEL - 12 dígitos)</label>
-          <input type="text" id="manualPdfOpbel" placeholder="000826441610" />
-        </div>
-        <div>
-          <label>Fecha Emisión (DD-MM-YYYY)</label>
-          <input type="text" id="manualPdfFecha" placeholder="27-10-2026" />
-        </div>
-        <div>
-          <label>Título</label>
-          <input type="text" id="manualPdfTitle" value="DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024" />
-        </div>
-        <button class="detail-btn" onclick="triggerManualPdf()">📥 Descargar Detalle PDF</button>
-      </div>
-
-      <pre id="docsRawJsonPre" style="display:none;max-height:240px;margin-top:0.75rem"></pre>
+      <div id="pdfMetaSubtitle" style="font-size:0.76rem;color:var(--muted);margin-bottom:0.5rem"></div>
+      <div id="pdfStatusMsg" style="color:#38bdf8;font-size:0.88rem;padding:1.25rem;text-align:center"></div>
+      <div id="pdfCanvasContainer"></div>
+      <pre id="pdfRawJsonPre" style="display:none;max-height:220px;margin-top:0.5rem"></pre>
     </div>
   </div>
 
@@ -281,7 +295,9 @@
     const URL_LISTA_BOLETAS = "https://orchestrator-portalescge-prd.lfr.cloud/consultarListaUltimasBoletas";
     const URL_PDF = "https://orchestrator-portalescge-prd.lfr.cloud/consultarDetalleBoletaPDF";
 
-    const STORAGE_KEY = "cge_debt_history_v7";
+    const KEY_HISTORY = "cge_debt_history_v7";
+    const KEY_RESULTS = "cge_saved_results_v1";
+    const KEY_INPUTS = "cge_saved_inputs_v1";
 
     const COMMON_HEADERS = {
       "accept": "*/*",
@@ -291,12 +307,20 @@
       "x-csrf-token": "g8IS3NBw"
     };
 
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+
     let isRunning = false;
     let resultsData = [];
-    let lastDocsModalRawJson = null;
-
+    let historyCache = {};
     let currentSortField = null;
     let currentSortAsc = true;
+
+    let currentPdfDoc = null;
+    let currentPdfScale = 1.35;
+    let lastPdfDebugJson = null;
 
     let currentWorkbook = null;
     let currentSheetRows = [];
@@ -304,11 +328,143 @@
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+    // =========================================================================
+    // 1. CAPA DE ALMACENAMIENTO NATIVO PERMANENTE (@capacitor/preferences)
+    // =========================================================================
+    const NativeStorage = {
+      async get(key) {
+        try {
+          const prefs = window.Capacitor?.Plugins?.Preferences;
+          if (prefs) {
+            const res = await prefs.get({ key });
+            if (res && res.value !== null && res.value !== undefined) return res.value;
+          }
+        } catch (e) {}
+        return localStorage.getItem(key);
+      },
+      async set(key, value) {
+        try { localStorage.setItem(key, value); } catch (e) {}
+        try {
+          const prefs = window.Capacitor?.Plugins?.Preferences;
+          if (prefs) {
+            await prefs.set({ key, value });
+          }
+        } catch (e) {}
+      },
+      async remove(key) {
+        try { localStorage.removeItem(key); } catch (e) {}
+        try {
+          const prefs = window.Capacitor?.Plugins?.Preferences;
+          if (prefs) {
+            await prefs.remove({ key });
+          }
+        } catch (e) {}
+      }
+    };
+
+    async function persistCurrentState() {
+      const compactResults = resultsData.map(r => {
+        const cleanRaw = r.rawJson ? {
+          consultarDeudaPorCuentaContrato: r.rawJson.consultarDeudaPorCuentaContrato,
+          detalleCuentaContrato: r.rawJson.detalleCuentaContrato,
+          getPagoInfo: r.rawJson.getPagoInfo ? {
+            cuentaContrato: r.rawJson.getPagoInfo.cuentaContrato,
+            direccion: r.rawJson.getPagoInfo.direccion,
+            deudaActual: r.rawJson.getPagoInfo.deudaActual,
+            deudaVencida: r.rawJson.getPagoInfo.deudaVencida
+          } : null
+        } : null;
+        return { ...r, rawJson: cleanRaw };
+      });
+
+      const inputState = {
+        inputType: document.getElementById("inputType").value,
+        meters: document.getElementById("meters").value
+      };
+
+      await Promise.all([
+        NativeStorage.set(KEY_RESULTS, JSON.stringify(compactResults)),
+        NativeStorage.set(KEY_INPUTS, JSON.stringify(inputState)),
+        NativeStorage.set(KEY_HISTORY, JSON.stringify(historyCache))
+      ]);
+    }
+
+    async function loadPersistedState() {
+      try {
+        const [rawHist, rawRes, rawInp] = await Promise.all([
+          NativeStorage.get(KEY_HISTORY),
+          NativeStorage.get(KEY_RESULTS),
+          NativeStorage.get(KEY_INPUTS)
+        ]);
+
+        if (rawHist) {
+          historyCache = JSON.parse(rawHist) || {};
+        }
+
+        if (rawInp) {
+          const inp = JSON.parse(rawInp);
+          if (inp.inputType) document.getElementById("inputType").value = inp.inputType;
+          if (typeof inp.meters === "string") document.getElementById("meters").value = inp.meters;
+          updateTextareaCount();
+        }
+
+        if (rawRes) {
+          const parsedRes = JSON.parse(rawRes);
+          if (Array.isArray(parsedRes) && parsedRes.length > 0) {
+            resultsData = parsedRes;
+            renderTable();
+            updateSummary();
+            setButtonsRunningState(false);
+            setInputPanelCollapsed(true);
+            document.getElementById("progressText").textContent =
+              `📂 Memoria restaurada (${resultsData.length} cuentas guardadas)`;
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Error cargando estado guardado:", e);
+      }
+
+      document.getElementById("progressText").textContent = "Listo para consultar";
+    }
+
+    // =========================================================================
+    // 2. NAVEGACIÓN EXTERNA AL NAVEGADOR DEL TELÉFONO
+    // =========================================================================
+    async function openExternalUrl(url) {
+      try {
+        const browserPlugin = window.Capacitor?.Plugins?.Browser;
+        if (browserPlugin) {
+          await browserPlugin.open({ url });
+          return;
+        }
+      } catch (e) {}
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+
+    // =========================================================================
+    // 3. PANEL COLAPSABLE PARA MÓVIL Y LECTURA DE EXCEL
+    // =========================================================================
+    function toggleInputPanel() {
+      const body = document.getElementById("inputBody");
+      const isCollapsed = body.classList.contains("collapsed");
+      setInputPanelCollapsed(!isCollapsed);
+    }
+
+    function setInputPanelCollapsed(collapsed) {
+      const body = document.getElementById("inputBody");
+      const icon = document.getElementById("panelToggleIcon");
+      if (collapsed) {
+        body.classList.add("collapsed");
+        icon.textContent = "▼ Mostrar";
+      } else {
+        body.classList.remove("collapsed");
+        icon.textContent = "▲ Ocultar";
+      }
+    }
+
     const dropZone = document.getElementById("dropZone");
-    dropZone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      dropZone.classList.add("dragover");
-    });
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
     dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
@@ -324,7 +480,7 @@
 
     function processSpreadsheetFile(file) {
       if (typeof XLSX === "undefined") {
-        alert("La librería lectora de Excel aún no ha cargado. Verifica tu conexión a internet.");
+        alert("La librería lectora de Excel aún no ha cargado.");
         return;
       }
       document.getElementById("fileDropTitle").textContent = `📄 ${file.name}`;
@@ -345,13 +501,8 @@
             sheetSelect.appendChild(opt);
           });
 
-          if (currentWorkbook.SheetNames.length > 1) {
-            sheetSelect.style.display = "block";
-            sheetLabel.style.display = "block";
-          } else {
-            sheetSelect.style.display = "none";
-            sheetLabel.style.display = "none";
-          }
+          sheetSelect.style.display = currentWorkbook.SheetNames.length > 1 ? "block" : "none";
+          sheetLabel.style.display = currentWorkbook.SheetNames.length > 1 ? "block" : "none";
 
           document.getElementById("excelPanel").style.display = "block";
           onSheetChange();
@@ -366,16 +517,11 @@
       const sheetName = document.getElementById("sheetSelect").value;
       const worksheet = currentWorkbook.Sheets[sheetName];
       const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-
-      if (!matrix || matrix.length === 0) {
-        document.getElementById("excelStats").textContent = "La hoja seleccionada está vacía.";
-        return;
-      }
+      if (!matrix || matrix.length === 0) return;
 
       let headerRowIndex = 0;
       for (let i = 0; i < Math.min(10, matrix.length); i++) {
-        const nonEmptyCount = matrix[i].filter(c => String(c).trim() !== "").length;
-        if (nonEmptyCount >= 1) {
+        if (matrix[i].filter(c => String(c).trim() !== "").length >= 1) {
           headerRowIndex = i;
           break;
         }
@@ -400,7 +546,6 @@
 
       const colSelect = document.getElementById("columnSelect");
       colSelect.innerHTML = "";
-
       let bestColIndex = 0;
       let bestScore = -1;
 
@@ -414,14 +559,9 @@
         let score = 0;
         if (lower.includes("medidor") || lower.includes("aparato") || lower.includes("serie")) score += 50;
         if (lower.includes("cliente") || lower.includes("contrato") || lower.includes("cta")) score += 40;
+        score += Math.min(extractCleanValuesFromCol(h.index).length, 30);
 
-        const validCount = extractCleanValuesFromCol(h.index).length;
-        score += Math.min(validCount, 30);
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestColIndex = h.index;
-        }
+        if (score > bestScore) { bestScore = score; bestColIndex = h.index; }
       });
 
       colSelect.value = bestColIndex;
@@ -434,21 +574,16 @@
       for (const row of currentSheetRows) {
         let raw = row[colIndex];
         if (raw === undefined || raw === null) continue;
-        let str = String(raw).trim();
-        if (!str) continue;
-        str = str.replace(/\.0+$/, "");
+        let str = String(raw).trim().replace(/\.0+$/, "");
         const cleaned = str.replace(/[^0-9]/g, "");
-        if (cleaned.length >= 4 && cleaned.length <= 15) {
-          values.push(cleaned);
-        }
+        if (cleaned.length >= 4 && cleaned.length <= 15) values.push(cleaned);
       }
       return values;
     }
 
     function previewSelectedColumn() {
       const colIndex = parseInt(document.getElementById("columnSelect").value || "0", 10);
-      const vals = extractCleanValuesFromCol(colIndex);
-      const uniqueVals = [...new Set(vals)];
+      const uniqueVals = [...new Set(extractCleanValuesFromCol(colIndex))];
       const sample = uniqueVals.slice(0, 3).join(", ");
       document.getElementById("excelStats").textContent =
         uniqueVals.length > 0
@@ -464,12 +599,16 @@
       const textarea = document.getElementById("meters");
       if (append && textarea.value.trim().length > 0) {
         const existing = textarea.value.split(/[\n,;\s]+/).map(s => s.trim()).filter(Boolean);
-        const combined = [...new Set([...existing, ...newVals])];
-        textarea.value = combined.join("\n");
+        textarea.value = [...new Set([...existing, ...newVals])].join("\n");
       } else {
         textarea.value = [...new Set(newVals)].join("\n");
       }
+      onMetersInput();
+    }
+
+    function onMetersInput() {
       updateTextareaCount();
+      persistCurrentState();
     }
 
     function updateTextareaCount() {
@@ -479,7 +618,7 @@
 
     function clearTextarea() {
       document.getElementById("meters").value = "";
-      updateTextareaCount();
+      onMetersInput();
     }
 
     function sortTableBy(field) {
@@ -496,7 +635,6 @@
 
       resultsData.sort((a, b) => {
         let cmp = 0;
-
         if (field === "deuda" || field === "boletas") {
           cmp = (Number(a[field]) || 0) - (Number(b[field]) || 0);
         } else if (field === "direccion") {
@@ -508,7 +646,6 @@
         } else {
           cmp = collator.compare(String(a[field] || ""), String(b[field] || ""));
         }
-
         return currentSortAsc ? cmp : -cmp;
       });
 
@@ -519,7 +656,7 @@
         direccion: "Dirección",
         deuda: "Deuda Total",
         boletas: "Boletas",
-        tag: "Estado (Clic abre Boletas)"
+        tag: "Estado (Toca = Últ. Boleta)"
       };
 
       fields.forEach(f => {
@@ -541,61 +678,56 @@
 
       syncTextareaWithTable();
       renderTable();
+      persistCurrentState();
     }
 
-    function getHistory() {
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
-      catch { return {}; }
-    }
-
-    function saveHistory(historyObj) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(historyObj));
-    }
-
-    function clearHistory() {
-      if (confirm("¿Seguro que deseas borrar la línea base guardada?")) {
-        localStorage.removeItem(STORAGE_KEY);
+    async function clearHistory() {
+      if (confirm("¿Seguro que deseas borrar la línea base de pagos guardada?")) {
+        historyCache = {};
+        await NativeStorage.remove(KEY_HISTORY);
         alert("Línea base reiniciada.");
       }
     }
 
-    /**
-     * Parsea montos en CLP incluyendo notación científica de Java/Liferay para decenas de millones
-     * (ej: "1.5E7" -> 15000000, "2.35E+07" -> 23500000), decimales ".0"/".00" y puntos de miles ("40.100").
-     */
+    async function clearAllSavedData() {
+      if (confirm("¿Borrar toda la tabla guardada, el listado y el historial de pagos?")) {
+        historyCache = {};
+        resultsData = [];
+        document.getElementById("meters").value = "";
+        updateTextareaCount();
+        await Promise.all([
+          NativeStorage.remove(KEY_HISTORY),
+          NativeStorage.remove(KEY_RESULTS),
+          NativeStorage.remove(KEY_INPUTS)
+        ]);
+        renderTable();
+        updateSummary();
+        setButtonsRunningState(false);
+        document.getElementById("progressText").textContent = "Memoria borrada por completo";
+      }
+    }
+
     function parseCLP(val) {
       if (val === undefined || val === null || val === "") return null;
       if (typeof val === "number") return Number.isFinite(val) ? Math.round(val) : null;
 
       const s = String(val).trim();
       if (!/\d/.test(s)) return null;
-
-      // Evitar confundir fechas con montos
-      if (
-        /^\d{4}[-/.]\d{2}[-/.]\d{2}/.test(s) ||
-        /^\d{2}[-/.]\d{2}[-/.]\d{4}/.test(s)
-      ) {
-        return null;
-      }
+      if (/^\d{4}[-/.]\d{2}[-/.]\d{2}/.test(s) || /^\d{2}[-/.]\d{2}[-/.]\d{4}/.test(s)) return null;
 
       const cleanedNoSpace = s.replace(/[$\s]/g, "");
 
-      // 1. Notación científica (Java convierte números >= 10.000.000 a "1.5E7")
       if (/^[+-]?\d+(?:[.,]\d+)?[eE][+-]?\d+$/.test(cleanedNoSpace)) {
         const num = Number(cleanedNoSpace.replace(",", "."));
         return Number.isFinite(num) ? Math.round(num) : null;
       }
 
-      // 2. Decimal estándar con 1 o 2 decimales y sin separador de miles (ej: "224000.0" o "40100.00", NO "40.100")
       if (/^[+-]?\d+\.\d{1,2}$/.test(cleanedNoSpace)) {
         const num = Number(cleanedNoSpace);
         return Number.isFinite(num) ? Math.round(num) : null;
       }
 
-      // 3. Quitar decimales al final (",00" o ".00" pero nunca ".000" de miles)
       const withoutTrailingDecimals = cleanedNoSpace.replace(/[,.]\d{1,2}$/, "");
-
-      // 4. En CLP los puntos separan miles ("40.100" -> "40100", "15.200.000" -> "15200000")
       const digitsOnly = withoutTrailingDecimals.replace(/[^0-9-]/g, "");
       if (!digitsOnly || digitsOnly === "-") return null;
 
@@ -609,7 +741,6 @@
       if (!s || s === "-" || s === "0000-00-00" || s === "00000000" || s === "0") return null;
 
       let year, month, day;
-
       const sapMatch = s.match(/^(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/);
       if (sapMatch) [, year, month, day] = sapMatch;
 
@@ -629,13 +760,8 @@
 
       if (year && month && day) {
         const dateObj = new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59);
-        return {
-          display: `${day}-${month}-${year}`,
-          isoDate: `${year}-${month}-${day}`,
-          timestamp: dateObj.getTime()
-        };
+        return { display: `${day}-${month}-${year}`, isoDate: `${year}-${month}-${day}`, timestamp: dateObj.getTime() };
       }
-
       return s.length <= 20 ? { display: s, isoDate: s, timestamp: null } : null;
     }
 
@@ -643,11 +769,7 @@
       const res = await fetch(URL_MEDIDOR, {
         method: "POST",
         headers: COMMON_HEADERS,
-        body: JSON.stringify({
-          NroMedidor: String(medidor).trim(),
-          Sociedad: "E200",
-          url: "OFVCGE_P"
-        })
+        body: JSON.stringify({ NroMedidor: String(medidor).trim(), Sociedad: "E200", url: "OFVCGE_P" })
       });
       return res.json();
     }
@@ -657,13 +779,7 @@
       const res = await fetch(URL_DEUDA_CTA, {
         method: "POST",
         headers: COMMON_HEADERS,
-        body: JSON.stringify({
-          ITEM: {
-            CANAL: "OVIRTUAL",
-            CTA_CTO: cleanClient
-          },
-          url: "OFVCGE_P"
-        })
+        body: JSON.stringify({ ITEM: { CANAL: "OVIRTUAL", CTA_CTO: cleanClient }, url: "OFVCGE_P" })
       });
       return res.json();
     }
@@ -673,12 +789,7 @@
       const res = await fetch(URL_PAGO, {
         method: "POST",
         headers: COMMON_HEADERS,
-        body: JSON.stringify({
-          I_CANAL: "OVIRTUAL",
-          I_VKONT: cleanClient,
-          Sociedad: "E200",
-          url: "OFVCGE_P"
-        })
+        body: JSON.stringify({ I_CANAL: "OVIRTUAL", I_VKONT: cleanClient, Sociedad: "E200", url: "OFVCGE_P" })
       });
       return res.json();
     }
@@ -688,13 +799,7 @@
       const res = await fetch(URL_DETALLE, {
         method: "POST",
         headers: COMMON_HEADERS,
-        body: JSON.stringify({
-          ITEM: {
-            Sociedad: "E200",
-            cta_cto: cleanClient
-          },
-          url: "OFVCGE_P"
-        })
+        body: JSON.stringify({ ITEM: { Sociedad: "E200", cta_cto: cleanClient }, url: "OFVCGE_P" })
       });
       return res.json();
     }
@@ -704,13 +809,7 @@
       const res = await fetch(URL_DETALLE_SL, {
         method: "POST",
         headers: COMMON_HEADERS,
-        body: JSON.stringify({
-          ITEM: {
-            Sociedad: "E200",
-            cta_cto: cleanClient
-          },
-          url: "OFVCGE_P"
-        })
+        body: JSON.stringify({ ITEM: { Sociedad: "E200", cta_cto: cleanClient }, url: "OFVCGE_P" })
       });
       return res.json();
     }
@@ -722,7 +821,7 @@
         headers: COMMON_HEADERS,
         body: JSON.stringify({
           CuentaContrato: cleanClient,
-          CantidadDocumentos: "13",
+          CantidadDocumentos: "5",
           RangoFechas: "",
           Sociedad: "E200",
           url: "OFVCGE_P"
@@ -739,23 +838,17 @@
       let parsedPayDate = null;
       let montoUltimoPago = null;
 
-      // Leer deuda directa únicamente desde los nodos oficiales de getPagoInfo
       const pagoActualBetrw = parseCLP(pagoData?.deudaActual?.BETRW) ?? 0;
       const pagoVencidaBetrw = parseCLP(pagoData?.deudaVencida?.BETRW) ?? 0;
       const deudaPagoInfo = Math.max(pagoActualBetrw, pagoVencidaBetrw);
 
       const allKeyValues = [];
-
       const scanObject = (obj, sourceName) => {
         if (!obj || typeof obj !== "object") return;
         for (const [k, v] of Object.entries(obj)) {
-          if (Array.isArray(v)) {
-            v.forEach(sub => scanObject(sub, sourceName + "." + k));
-          } else if (v !== null && typeof v === "object") {
-            scanObject(v, sourceName + "." + k);
-          } else {
-            allKeyValues.push({ key: k, keyLower: k.toLowerCase(), val: v, source: sourceName });
-          }
+          if (Array.isArray(v)) v.forEach(sub => scanObject(sub, sourceName + "." + k));
+          else if (v !== null && typeof v === "object") scanObject(v, sourceName + "." + k);
+          else allKeyValues.push({ key: k, keyLower: k.toLowerCase(), val: v, source: sourceName });
         }
       };
 
@@ -765,34 +858,20 @@
 
       for (const entry of allKeyValues) {
         const kl = entry.keyLower.replace(/_/g, "");
-        if (ultBoleta === null && (kl === "ultboleta" || kl.includes("ultboleta"))) {
-          ultBoleta = parseCLP(entry.val) ?? 0;
-        }
-        if (antBoleta === null && (kl === "antboleta" || kl.includes("antboleta"))) {
-          antBoleta = parseCLP(entry.val) ?? 0;
-        }
-        if (terBoleta === null && (kl === "terboleta" || kl.includes("terboleta"))) {
-          terBoleta = parseCLP(entry.val) ?? 0;
-        }
+        if (ultBoleta === null && (kl === "ultboleta" || kl.includes("ultboleta"))) ultBoleta = parseCLP(entry.val) ?? 0;
+        if (antBoleta === null && (kl === "antboleta" || kl.includes("antboleta"))) antBoleta = parseCLP(entry.val) ?? 0;
+        if (terBoleta === null && (kl === "terboleta" || kl.includes("terboleta"))) terBoleta = parseCLP(entry.val) ?? 0;
       }
 
       const u = ultBoleta ?? 0;
       const a = antBoleta ?? 0;
       const t = terBoleta ?? 0;
 
-      // Si hay deuda en ultBoleta la usamos, y si ultBoleta viene en 0 pero getPagoInfo tiene deuda, usamos la de getPagoInfo
-      let deuda = Math.max(u, deudaPagoInfo);
+      const deuda = Math.max(u, deudaPagoInfo);
       let boletas = 0;
-
-      if (t > 0) {
-        boletas = 3;
-      } else if (a > 0) {
-        boletas = 2;
-      } else if (u > 0 || deudaPagoInfo > 0) {
-        boletas = 1;
-      } else {
-        boletas = 0;
-      }
+      if (t > 0) boletas = 3;
+      else if (a > 0) boletas = 2;
+      else if (u > 0 || deudaPagoInfo > 0) boletas = 1;
 
       const dirEntry = allKeyValues.find(e =>
         (e.keyLower.includes("direcc") || e.keyLower === "dir" || e.keyLower.includes("calle")) &&
@@ -839,14 +918,17 @@
       };
     }
 
-    /**
-     * Lógica original de detección de PAGADO restaurada (detecta pagos totales,
-     * abonos / cuota convenio cuando baja la deuda o boletas, y pagos posteriores a la revisión).
-     */
-    function classifyAccountAndUpdateHistory(clienteId, parsed, history) {
+    function classifyAccountAndUpdateHistory(clienteId, parsed) {
       const nowMs = Date.now();
-      const nowTimeStr = new Date(nowMs).toLocaleTimeString("es-CL");
-      const prev = history[clienteId];
+      const nowTimeStr = new Date(nowMs).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+      const prev = historyCache[clienteId];
+
+      // Auto-corregir entradas antiguas guardadas con el bug del decimal ".0" (exactamente 10x mayores)
+      if (prev && parsed.deuda > 0 && prev.deuda === parsed.deuda * 10) {
+        prev.deuda = parsed.deuda;
+        prev.lastTag = null;
+        prev.paidNote = "";
+      }
 
       let paidNote = "";
       let isPaidSinceLastCheck = false;
@@ -901,7 +983,7 @@
         css = "tag-detalle";
       }
 
-      history[clienteId] = {
+      historyCache[clienteId] = {
         deuda: prev ? Math.max(prev.deuda, parsed.deuda) : parsed.deuda,
         boletas: prev ? Math.max(prev.boletas, parsed.boletas) : parsed.boletas,
         fechaPagoIso: prev?.fechaPagoIso || parsed.fechaPagoIso,
@@ -911,12 +993,11 @@
         lastTag: tag,
         paidNote
       };
-      saveHistory(history);
 
       return { tag, css, paidNote, lastCheckedStr: nowTimeStr };
     }
 
-    async function querySingleAccount(medidor, cliente, direccionHint, history, isSelected = false) {
+    async function querySingleAccount(medidor, cliente, direccionHint, isSelected = false) {
       const [deudaCtaJson, detalleJson, pagoJson] = await Promise.all([
         fetchDeudaPorCuenta(cliente).catch(e => ({ errorDeudaCta: String(e) })),
         fetchDetalleCuenta(cliente).catch(e => ({ errorDetalle: String(e) })),
@@ -925,7 +1006,7 @@
 
       const parsed = extractAccountData(deudaCtaJson, detalleJson, pagoJson);
       const finalDir = (direccionHint && direccionHint !== "-") ? direccionHint : (parsed.direccion || "-");
-      const statusInfo = classifyAccountAndUpdateHistory(cliente, parsed, history);
+      const statusInfo = classifyAccountAndUpdateHistory(cliente, parsed);
 
       return {
         selected: isSelected,
@@ -967,7 +1048,7 @@
     function updateSelectionButtons() {
       const selectedCount = resultsData.filter(r => r.selected).length;
       const delBtn = document.getElementById("deleteSelectedBtn");
-      delBtn.textContent = `🗑️ Eliminar Seleccionados (${selectedCount})`;
+      delBtn.textContent = `🗑️ Eliminar (${selectedCount})`;
       delBtn.disabled = isRunning || selectedCount === 0;
 
       const selectAllBox = document.getElementById("selectAllCheckbox");
@@ -982,40 +1063,37 @@
       const remaining = resultsData
         .map(r => (mode === "medidor" && r.medidor !== "-") ? r.medidor : r.cliente)
         .filter(v => v && v !== "-");
-      if (remaining.length > 0) {
-        document.getElementById("meters").value = [...new Set(remaining)].join("\n");
-      } else {
-        document.getElementById("meters").value = "";
-      }
+      document.getElementById("meters").value = remaining.length > 0 ? [...new Set(remaining)].join("\n") : "";
       updateTextareaCount();
     }
 
-    function deleteSingleRow(index) {
+    async function deleteSingleRow(index) {
       if (isRunning) return;
       resultsData.splice(index, 1);
       syncTextareaWithTable();
       renderTable();
       updateSummary();
       setButtonsRunningState(false);
+      await persistCurrentState();
     }
 
-    function toggleRowSelection(index, checked) {
+    async function toggleRowSelection(index, checked) {
       if (!resultsData[index]) return;
       resultsData[index].selected = checked;
       const tbody = document.getElementById("resultsBody");
-      if (tbody.children[index]) {
-        tbody.children[index].classList.toggle("selected-row", checked);
-      }
+      if (tbody.children[index]) tbody.children[index].classList.toggle("selected-row", checked);
       updateSelectionButtons();
+      await persistCurrentState();
     }
 
-    function toggleSelectAll(checked) {
+    async function toggleSelectAll(checked) {
       resultsData.forEach(r => (r.selected = checked));
       renderTable();
       updateSelectionButtons();
+      await persistCurrentState();
     }
 
-    function deleteSelectedRows() {
+    async function deleteSelectedRows() {
       if (isRunning) return;
       const count = resultsData.filter(r => r.selected).length;
       if (count === 0) return;
@@ -1024,21 +1102,21 @@
       renderTable();
       updateSummary();
       setButtonsRunningState(false);
+      await persistCurrentState();
       document.getElementById("progressText").textContent =
         `🗑️ Se eliminaron ${count} registro(s). Quedan ${resultsData.length}.`;
     }
 
-    function deleteNonDebtRows() {
+    async function deleteNonDebtRows() {
       if (isRunning) return;
       const before = resultsData.length;
-      resultsData = resultsData.filter(r =>
-        r.tag === "DESCONEXIÓN" || r.tag === "DETALLE" || r.tag === "PAGADO"
-      );
+      resultsData = resultsData.filter(r => r.tag === "DESCONEXIÓN" || r.tag === "DETALLE" || r.tag === "PAGADO");
       const removed = before - resultsData.length;
       syncTextareaWithTable();
       renderTable();
       updateSummary();
       setButtonsRunningState(false);
+      await persistCurrentState();
       document.getElementById("progressText").textContent =
         `🧹 Se quitaron ${removed} cuenta(s) Al Día / Sin Datos. Quedan ${resultsData.length}.`;
     }
@@ -1055,9 +1133,8 @@
       currentSortField = null;
       updateSummary();
       setButtonsRunningState(true);
+      setInputPanelCollapsed(true);
       document.getElementById("resultsBody").innerHTML = "";
-
-      const history = getHistory();
 
       for (let i = 0; i < list.length; i++) {
         if (!isRunning) break;
@@ -1072,15 +1149,14 @@
             const medidorData = await fetchClienteByMedidor(itemInput);
             const items = medidorData?.items || [];
             if (items.length === 0) {
-              const rowObj = {
+              resultsData.push({
                 selected: false,
                 medidor: itemInput, cliente: "-", direccion: "Medidor no encontrado",
                 deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
                 fechaUltimoPago: "-", montoUltimoPago: null,
-                lastCheckedStr: new Date().toLocaleTimeString("es-CL"),
+                lastCheckedStr: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
                 tag: "SIN DATOS", css: "tag-error", paidNote: "", rawJson: medidorData
-              };
-              resultsData.push(rowObj);
+              });
               renderTable();
               updateSummary();
               continue;
@@ -1091,50 +1167,42 @@
               direccion: it.direccion || "-"
             }));
           } else {
-            accountsToQuery = [{
-              medidor: "-",
-              cliente: itemInput.replace(/^0+/, ""),
-              direccion: "-"
-            }];
+            accountsToQuery = [{ medidor: "-", cliente: itemInput.replace(/^0+/, ""), direccion: "-" }];
           }
 
           for (const acc of accountsToQuery) {
             if (!isRunning) break;
-            const rowObj = await querySingleAccount(acc.medidor, acc.cliente, acc.direccion, history, false);
+            const rowObj = await querySingleAccount(acc.medidor, acc.cliente, acc.direccion, false);
             resultsData.push(rowObj);
             renderTable();
             updateSummary();
           }
         } catch (err) {
-          const rowObj = {
+          resultsData.push({
             selected: false,
             medidor: itemInput, cliente: "-", direccion: "Error de red / CORS",
             deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
             fechaUltimoPago: "-", montoUltimoPago: null,
-            lastCheckedStr: new Date().toLocaleTimeString("es-CL"),
+            lastCheckedStr: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
             tag: "ERROR", css: "tag-error", paidNote: "", rawJson: { error: String(err) }
-          };
-          resultsData.push(rowObj);
+          });
           renderTable();
           updateSummary();
         }
 
-        if (i < list.length - 1 && isRunning && delayMs > 0) {
-          await sleep(delayMs);
-        }
+        if (i < list.length - 1 && isRunning && delayMs > 0) await sleep(delayMs);
       }
 
+      await persistCurrentState();
       setButtonsRunningState(false);
       document.getElementById("progressText").textContent =
-        `Finalizado (${resultsData.length} cuentas cargadas)`;
+        `Finalizado (${resultsData.length} cuentas guardadas)`;
     }
 
     async function updateExistingTable() {
       if (resultsData.length === 0 || isRunning) return;
       const delayMs = parseInt(document.getElementById("delay").value || "450", 10);
       setButtonsRunningState(true);
-
-      const history = getHistory();
 
       for (let i = 0; i < resultsData.length; i++) {
         if (!isRunning) break;
@@ -1147,7 +1215,7 @@
 
         try {
           const updatedRow = await querySingleAccount(
-            current.medidor, current.cliente, current.direccion, history, current.selected
+            current.medidor, current.cliente, current.direccion, current.selected
           );
           resultsData[i] = updatedRow;
           renderTable();
@@ -1156,14 +1224,13 @@
           highlightRowUpdating(i, false);
         }
 
-        if (i < resultsData.length - 1 && isRunning && delayMs > 0) {
-          await sleep(delayMs);
-        }
+        if (i < resultsData.length - 1 && isRunning && delayMs > 0) await sleep(delayMs);
       }
 
+      await persistCurrentState();
       setButtonsRunningState(false);
       document.getElementById("progressText").textContent =
-        `✅ Tabla actualizada a las ${new Date().toLocaleTimeString("es-CL")}`;
+        `✅ Actualizado y guardado a las ${new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`;
     }
 
     async function updateSingleRow(index) {
@@ -1172,14 +1239,14 @@
       if (!current || !current.cliente || current.cliente === "-") return;
 
       highlightRowUpdating(index, true);
-      const history = getHistory();
       try {
         const updatedRow = await querySingleAccount(
-          current.medidor, current.cliente, current.direccion, history, current.selected
+          current.medidor, current.cliente, current.direccion, current.selected
         );
         resultsData[index] = updatedRow;
         renderTable();
         updateSummary();
+        await persistCurrentState();
       } catch (e) {
         highlightRowUpdating(index, false);
       }
@@ -1193,315 +1260,134 @@
 
     function stopBatch() { isRunning = false; }
 
-    function extractBillsFromUltimasBoletas(listaBoletasData, slData, detalleData, rowFallback) {
-      const foundDocs = [];
-      const seenOpbels = new Set();
+    // =========================================================================
+    // 4. VISOR IN-APP DE ÚLTIMA BOLETA PDF (SIN DESCARGAR ARCHIVO AL TELÉFONO)
+    // =========================================================================
+    function extractLatestDocMetadata(listaBoletasData, slData, detalleData) {
+      const candidates = [];
 
-      const extractFromSingleDocObj = (node) => {
-        if (!node || typeof node !== "object" || Array.isArray(node)) return null;
+      const inspectNode = (node) => {
+        if (!node || typeof node !== "object") return;
+        if (Array.isArray(node)) { node.forEach(inspectNode); return; }
+
         const lowerMap = {};
         for (const [k, v] of Object.entries(node)) {
           lowerMap[k.toLowerCase().replace(/_/g, "")] = v;
         }
 
         let rawOpbel =
-          lowerMap["opbel"] ??
-          lowerMap["nrodocumento"] ??
-          lowerMap["numerodocumento"] ??
-          lowerMap["numdocumento"] ??
-          lowerMap["documento"] ??
-          lowerMap["nrodoc"] ??
-          lowerMap["nroboleta"] ??
-          lowerMap["numeroboleta"] ??
-          lowerMap["folio"] ??
-          lowerMap["belnr"] ??
-          lowerMap["vbeln"] ??
-          lowerMap["id"];
+          lowerMap["opbel"] ?? lowerMap["nrodocumento"] ?? lowerMap["numerodocumento"] ??
+          lowerMap["numdocumento"] ?? lowerMap["documento"] ?? lowerMap["nrodoc"] ??
+          lowerMap["nroboleta"] ?? lowerMap["numeroboleta"] ?? lowerMap["folio"] ??
+          lowerMap["belnr"] ?? lowerMap["vbeln"];
 
-        if (rawOpbel === undefined || rawOpbel === null || String(rawOpbel).trim() === "") {
+        if (!rawOpbel) {
           for (const [k, v] of Object.entries(node)) {
             const kl = k.toLowerCase();
             if (kl.includes("cta") || kl.includes("cuenta") || kl.includes("cliente") || kl.includes("monto") || kl.includes("total") || kl.includes("fec")) continue;
             const s = String(v ?? "").trim();
-            if (/^0*\d{8,12}$/.test(s)) {
-              rawOpbel = s;
-              break;
-            }
+            if (/^0*\d{8,12}$/.test(s)) { rawOpbel = s; break; }
           }
         }
 
-        if (rawOpbel === undefined || rawOpbel === null || String(rawOpbel).trim() === "") return null;
-        const cleanDigits = String(rawOpbel).trim().replace(/[^0-9]/g, "");
-        if (cleanDigits.length < 5) return null;
-
-        const paddedOpbel = cleanDigits.padStart(12, "0");
-
-        const rawTitle =
-          node.title ??
-          node.Title ??
-          lowerMap["title"] ??
-          lowerMap["titulo"] ??
-          lowerMap["descripcion"] ??
-          lowerMap["glosa"] ??
-          lowerMap["concepto"] ??
-          lowerMap["tipodoc"] ??
-          lowerMap["tipodocumento"] ??
-          "DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024";
-
-        const rawFechaEmision =
-          node.fechaEmision ??
-          node.FechaEmision ??
-          lowerMap["fechaemision"] ??
-          lowerMap["fecemision"] ??
-          lowerMap["fecha"] ??
-          lowerMap["bldat"] ??
-          lowerMap["budat"] ??
-          lowerMap["fechadocumento"] ??
-          "-";
-
-        const rawFechaVenc =
-          node.fechaVencimiento ??
-          lowerMap["fechavencimiento"] ??
-          lowerMap["fecvencimiento"] ??
-          lowerMap["vencimiento"] ??
-          lowerMap["faedn"] ??
-          "-";
-
-        const parsedEmis = parsePaymentDate(rawFechaEmision);
-        const parsedVenc = parsePaymentDate(rawFechaVenc);
-
-        const rawMonto =
-          lowerMap["monto"] ??
-          lowerMap["montototal"] ??
-          lowerMap["total"] ??
-          lowerMap["importe"] ??
-          lowerMap["betrw"] ??
-          lowerMap["wrbtr"] ??
-          lowerMap["saldo"] ??
-          lowerMap["valor"] ??
-          0;
-
-        const rawEstado =
-          lowerMap["estado"] ??
-          lowerMap["estadoboleta"] ??
-          lowerMap["estadopago"] ??
-          lowerMap["status"] ??
-          lowerMap["situacion"] ??
-          "Emitida";
-
-        return {
-          opbel: paddedOpbel,
-          rawOpbel: String(rawOpbel).trim(),
-          title: String(rawTitle).trim(),
-          fechaEmision: parsedEmis ? parsedEmis.display : String(rawFechaEmision).trim(),
-          fechaVencimiento: parsedVenc ? parsedVenc.display : String(rawFechaVenc).trim(),
-          monto: parseCLP(rawMonto) ?? 0,
-          estado: String(rawEstado).trim()
-        };
-      };
-
-      const scanTree = (node) => {
-        if (!node || typeof node !== "object") return;
-        if (Array.isArray(node)) {
-          node.forEach(item => {
-            const doc = extractFromSingleDocObj(item);
-            if (doc && !seenOpbels.has(doc.opbel)) {
-              seenOpbels.add(doc.opbel);
-              foundDocs.push(doc);
-            } else {
-              scanTree(item);
-            }
-          });
-          return;
-        }
-
-        const directDoc = extractFromSingleDocObj(node);
-        if (directDoc && !seenOpbels.has(directDoc.opbel)) {
-          seenOpbels.add(directDoc.opbel);
-          foundDocs.push(directDoc);
+        if (rawOpbel) {
+          const cleanDigits = String(rawOpbel).trim().replace(/[^0-9]/g, "");
+          if (cleanDigits.length >= 5) {
+            const parsedEmis = parsePaymentDate(
+              node.fechaEmision ?? node.FechaEmision ?? lowerMap["fechaemision"] ?? lowerMap["fecemision"] ?? lowerMap["fecha"] ?? lowerMap["bldat"] ?? ""
+            );
+            candidates.push({
+              opbel: cleanDigits.padStart(12, "0"),
+              title: String(
+                node.title ?? node.Title ?? lowerMap["title"] ?? lowerMap["titulo"] ??
+                lowerMap["descripcion"] ?? "DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024"
+              ).trim(),
+              fechaEmision: parsedEmis ? parsedEmis.display : "",
+              monto: parseCLP(lowerMap["monto"] ?? lowerMap["montototal"] ?? lowerMap["total"] ?? lowerMap["betrw"] ?? 0) ?? 0
+            });
+          }
         }
 
         for (const val of Object.values(node)) {
-          if (val && typeof val === "object") scanTree(val);
+          if (val && typeof val === "object") inspectNode(val);
         }
       };
 
-      scanTree(listaBoletasData);
-      scanTree(slData);
-      scanTree(detalleData);
+      inspectNode(listaBoletasData);
+      if (candidates.length === 0) inspectNode(slData);
+      if (candidates.length === 0) inspectNode(detalleData);
 
-      if (foundDocs.length === 0 && rowFallback) {
-        const bills = [
-          { label: "1ra Boleta (ultBoleta - Total Actual)", amount: rowFallback.ultBoleta },
-          { label: "2da Boleta (antBoleta - Anterior)", amount: rowFallback.antBoleta },
-          { label: "3ra Boleta (terBoleta - Tercera)", amount: rowFallback.terBoleta }
-        ];
-        bills.forEach((b, idx) => {
-          foundDocs.push({
-            opbel: "-",
-            rawOpbel: "-",
-            title: b.label,
-            fechaEmision: "-",
-            fechaVencimiento: "-",
-            monto: b.amount || 0,
-            estado: (b.amount || 0) > 0 ? `Boleta #${idx + 1} Impaga` : "Sin saldo ($0)"
-          });
-        });
-      }
-
-      return foundDocs;
+      return candidates[0] || null;
     }
 
-    function toggleDocsRawJson() {
-      const pre = document.getElementById("docsRawJsonPre");
-      if (pre.style.display === "none") {
-        pre.style.display = "block";
-        pre.textContent = JSON.stringify(lastDocsModalRawJson, null, 2);
-      } else {
-        pre.style.display = "none";
-      }
-    }
-
-    async function openAccountDocuments(index) {
+    async function openLatestPdfInApp(index) {
       const row = resultsData[index];
       if (!row || !row.cliente || row.cliente === "-") return;
 
-      const modal = document.getElementById("docsModal");
-      const loading = document.getElementById("docsModalLoading");
-      const wrapper = document.getElementById("docsTableWrapper");
-      const tbody = document.getElementById("docsTableBody");
-      const title = document.getElementById("docsModalTitle");
-      const rawPre = document.getElementById("docsRawJsonPre");
-
       const cleanClient = row.cliente.replace(/^0+/, "");
-      document.getElementById("manualPdfClient").value = cleanClient;
+      const modal = document.getElementById("pdfModal");
+      const statusMsg = document.getElementById("pdfStatusMsg");
+      const container = document.getElementById("pdfCanvasContainer");
+      const rawPre = document.getElementById("pdfRawJsonPre");
 
-      title.textContent = `📄 Últimas Boletas - Cliente ${cleanClient} (${row.direccion})`;
-      modal.style.display = "flex";
-      loading.style.display = "block";
-      wrapper.style.display = "none";
+      document.getElementById("pdfModalTitle").textContent = `📄 Última Boleta - Cliente ${cleanClient}`;
+      document.getElementById("pdfMetaSubtitle").textContent = row.direccion;
+      container.innerHTML = "";
       rawPre.style.display = "none";
-      tbody.innerHTML = "";
+      statusMsg.style.display = "block";
+      statusMsg.textContent = "⏳ Buscando última boleta emitida...";
+      modal.style.display = "flex";
+      currentPdfDoc = null;
 
       try {
-        const [listaBoletasData, slData] = await Promise.all([
-          fetchListaUltimasBoletas(cleanClient).catch(e => ({ errorListaBoletas: String(e) })),
-          fetchDetalleCuentaSL(cleanClient).catch(e => ({ errorSL: String(e) }))
-        ]);
+        const listaBoletasData = await fetchListaUltimasBoletas(cleanClient);
+        lastPdfDebugJson = { consultarListaUltimasBoletas: listaBoletasData };
 
-        lastDocsModalRawJson = {
-          consultarListaUltimasBoletas: listaBoletasData,
-          detalleCuentaContratoSL: slData
-        };
+        let latestDoc = extractLatestDocMetadata(listaBoletasData, null, row.rawJson?.detalleCuentaContrato);
 
-        const docsList = extractBillsFromUltimasBoletas(
-          listaBoletasData,
-          slData,
-          row.rawJson?.detalleCuentaContrato,
-          row
-        );
-
-        loading.style.display = "none";
-        wrapper.style.display = "block";
-
-        if (docsList[0] && docsList[0].opbel !== "-") {
-          document.getElementById("manualPdfOpbel").value = docsList[0].opbel;
-          document.getElementById("manualPdfFecha").value =
-            docsList[0].fechaEmision !== "-" ? docsList[0].fechaEmision : "";
-          if (docsList[0].title) {
-            document.getElementById("manualPdfTitle").value = docsList[0].title;
-          }
+        if (!latestDoc) {
+          const slData = await fetchDetalleCuentaSL(cleanClient).catch(() => null);
+          lastPdfDebugJson.detalleCuentaContratoSL = slData;
+          latestDoc = extractLatestDocMetadata(null, slData, row.rawJson?.detalleCuentaContrato);
         }
 
-        docsList.forEach((doc, idx) => {
-          const tr = document.createElement("tr");
-          if (idx < 3) tr.classList.add("top3-bill");
+        if (!latestDoc) {
+          statusMsg.textContent = "⚠️ Esta cuenta no tiene documentos PDF emitidos disponibles.";
+          return;
+        }
 
-          const montoStr = "$" + Number(doc.monto || 0).toLocaleString("es-CL");
-          const hasValidOpbel = doc.opbel && doc.opbel !== "-";
+        const montoStr = latestDoc.monto ? ` • $${latestDoc.monto.toLocaleString("es-CL")}` : "";
+        const fechaStr = latestDoc.fechaEmision ? ` • Emisión: ${latestDoc.fechaEmision}` : "";
+        document.getElementById("pdfMetaSubtitle").textContent =
+          `${row.direccion} | Doc: ${latestDoc.opbel}${fechaStr}${montoStr}`;
 
-          tr.innerHTML = `
-            <td class="mono"><strong>${idx + 1}</strong> ${idx < 3 ? "⭐" : ""}</td>
-            <td class="mono"><strong>${doc.opbel}</strong></td>
-            <td>${doc.title}</td>
-            <td class="mono">${doc.fechaEmision}</td>
-            <td class="mono">${doc.fechaVencimiento}</td>
-            <td class="mono"><strong>${montoStr}</strong></td>
-            <td>${doc.estado}</td>
-            <td>
-              ${hasValidOpbel
-                ? `<button class="detail-btn" style="padding:0.35rem 0.65rem;font-size:0.75rem" onclick='downloadPdfDoc("${cleanClient}", "${doc.opbel}", ${JSON.stringify(doc.title)}, "${doc.fechaEmision}")'>📥 Detalle PDF</button>`
-                : `<span style="color:var(--muted);font-size:0.75rem">Haz clic en Ver JSON arriba</span>`
-              }
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-      } catch (err) {
-        loading.style.display = "none";
-        wrapper.style.display = "block";
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--danger)">Error al consultar boletas: ${err.message}</td></tr>`;
-      }
-    }
+        statusMsg.textContent = `⏳ Cargando PDF (${latestDoc.opbel}) en pantalla...`;
 
-    function triggerManualPdf() {
-      const client = document.getElementById("manualPdfClient").value.trim();
-      const opbel = document.getElementById("manualPdfOpbel").value.trim();
-      const fecha = document.getElementById("manualPdfFecha").value.trim();
-      const title = document.getElementById("manualPdfTitle").value.trim();
-      if (!client || !opbel) {
-        alert("Ingresa el N° de Cliente y el N° de Documento (OPBEL).");
-        return;
-      }
-      downloadPdfDoc(client, opbel, title, fecha);
-    }
-
-    async function downloadPdfDoc(cuentaContrato, opbel, title, fechaEmision) {
-      const cleanClient = String(cuentaContrato).trim().replace(/^0+/, "");
-      const paddedOpbel = String(opbel).trim().replace(/[^0-9]/g, "").padStart(12, "0");
-      const safeFecha = (!fechaEmision || fechaEmision === "-") ? "" : String(fechaEmision).trim();
-      const safeTitle = title || "DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024";
-
-      try {
         const res = await fetch(URL_PDF, {
           method: "POST",
-          headers: {
-            ...COMMON_HEADERS,
-            "responsetype": "arraybuffer"
-          },
+          headers: { ...COMMON_HEADERS, "responsetype": "arraybuffer" },
           body: JSON.stringify({
-            Documentos: {
-              OPBEL: paddedOpbel
-            },
+            Documentos: { OPBEL: latestDoc.opbel },
             Sociedad: "E200",
             cuentaContrato: cleanClient,
             signedIn: false,
             url: "OFVCGE_P",
-            title: safeTitle,
-            fechaEmision: safeFecha
+            title: latestDoc.title,
+            fechaEmision: latestDoc.fechaEmision
           })
         });
 
         const buffer = await res.arrayBuffer();
         const bytes = new Uint8Array(buffer);
+        let pdfBytes = null;
 
-        const isRawPdf =
-          bytes.length > 4 &&
-          bytes[0] === 0x25 &&
-          bytes[1] === 0x50 &&
-          bytes[2] === 0x44 &&
-          bytes[3] === 0x46;
-
-        let pdfBlob = null;
-
-        if (isRawPdf) {
-          pdfBlob = new Blob([buffer], { type: "application/pdf" });
+        if (bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+          pdfBytes = bytes;
         } else {
           const textResponse = new TextDecoder("utf-8").decode(bytes).trim();
-
           try {
             const jsonObj = JSON.parse(textResponse);
-            lastDocsModalRawJson = { respuestaPDF: jsonObj, ...lastDocsModalRawJson };
+            lastPdfDebugJson.respuestaPDF = jsonObj;
 
             let encodedPdf = null;
             const findPdfStr = (obj) => {
@@ -1519,49 +1405,94 @@
 
             if (encodedPdf && encodedPdf.startsWith("25504446")) {
               const cleanHex = encodedPdf.replace(/[^0-9a-fA-F]/g, "");
-              const pdfBytes = new Uint8Array(cleanHex.length / 2);
+              pdfBytes = new Uint8Array(cleanHex.length / 2);
               for (let i = 0; i < cleanHex.length; i += 2) {
                 pdfBytes[i / 2] = parseInt(cleanHex.substring(i, i + 2), 16);
               }
-              pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
             } else if (encodedPdf) {
               const cleanB64 = encodedPdf.replace(/^data:application\/pdf;base64,/, "").replace(/\s/g, "");
               const binStr = atob(cleanB64);
-              const pdfBytes = new Uint8Array(binStr.length);
+              pdfBytes = new Uint8Array(binStr.length);
               for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
-              pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
-            } else {
-              alert("Respuesta JSON del servidor PDF (revisa 'Ver JSON' arriba):\n\n" + textResponse.slice(0, 450));
-              return;
             }
           } catch {
             if (textResponse.startsWith("JVBERi")) {
               const binStr = atob(textResponse.replace(/\s/g, ""));
-              const pdfBytes = new Uint8Array(binStr.length);
+              pdfBytes = new Uint8Array(binStr.length);
               for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
-              pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
-            } else {
-              alert("Respuesta inesperada del servidor PDF:\n\n" + textResponse.slice(0, 450));
-              return;
             }
           }
         }
 
-        if (pdfBlob) {
-          const blobUrl = URL.createObjectURL(pdfBlob);
-          window.open(blobUrl, "_blank");
-          const a = document.createElement("a");
-          a.href = blobUrl;
-          a.download = `Detalle_CGE_${cleanClient}_${paddedOpbel}.pdf`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+        if (!pdfBytes) {
+          statusMsg.textContent = "⚠️ El servidor no devolvió un PDF válido (toca 'JSON' arriba para revisar).";
+          return;
         }
+
+        if (!window.pdfjsLib) {
+          statusMsg.textContent = "⚠️ El visor PDF no pudo cargar (revisa conexión a internet).";
+          return;
+        }
+
+        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+        currentPdfDoc = await loadingTask.promise;
+        currentPdfScale = window.innerWidth < 768 ? 1.15 : 1.5;
+        await renderPdfPages();
+        statusMsg.style.display = "none";
       } catch (err) {
-        alert("Error de red al descargar el PDF: " + err.message);
+        statusMsg.textContent = "❌ Error al abrir la boleta: " + err.message;
       }
     }
 
+    async function renderPdfPages() {
+      if (!currentPdfDoc) return;
+      const container = document.getElementById("pdfCanvasContainer");
+      container.innerHTML = "";
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      for (let pageNum = 1; pageNum <= currentPdfDoc.numPages; pageNum++) {
+        const page = await currentPdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: currentPdfScale });
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+
+        ctx.scale(dpr, dpr);
+        container.appendChild(canvas);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      }
+    }
+
+    async function changePdfZoom(delta) {
+      if (!currentPdfDoc) return;
+      currentPdfScale = Math.max(0.6, Math.min(3.0, currentPdfScale + delta));
+      await renderPdfPages();
+    }
+
+    function togglePdfRawJson() {
+      const pre = document.getElementById("pdfRawJsonPre");
+      if (pre.style.display === "none") {
+        pre.style.display = "block";
+        pre.textContent = JSON.stringify(lastPdfDebugJson, null, 2);
+      } else {
+        pre.style.display = "none";
+      }
+    }
+
+    function closePdfModal() {
+      document.getElementById("pdfModal").style.display = "none";
+      document.getElementById("pdfCanvasContainer").innerHTML = "";
+      currentPdfDoc = null;
+    }
+
+    // =========================================================================
+    // 5. RENDERIZADO DE TABLA / TARJETAS MÓVILES
+    // =========================================================================
     function renderTable() {
       const tbody = document.getElementById("resultsBody");
       tbody.innerHTML = "";
@@ -1577,42 +1508,36 @@
           ? ` | Portal: $${Number(row.deudaPagoInfo).toLocaleString("es-CL")}`
           : "";
 
-        const ultPagoMontoStr = row.montoUltimoPago
-          ? "$" + Number(row.montoUltimoPago).toLocaleString("es-CL")
-          : "";
-
         const portalUrl = `https://sucursalvirtual.cge.cl/detalle-de-cuenta?ctacto=${row.cliente}`;
         const clienteCellHtml = (row.cliente && row.cliente !== "-")
-          ? `<a href="${portalUrl}" target="_blank" class="client-link" title="Abrir en Sucursal Virtual CGE">🔗 ${row.cliente}</a>`
+          ? `<a href="#" class="client-link" onclick="event.preventDefault(); openExternalUrl('${portalUrl}')" title="Abrir en el navegador">🌐 ${row.cliente}</a>`
           : `-`;
 
         tr.innerHTML = `
-          <td>
+          <td class="td-select">
             <input type="checkbox" ${row.selected ? "checked" : ""} onchange="toggleRowSelection(${index}, this.checked)" />
           </td>
-          <td class="mono">${row.medidor}</td>
-          <td class="mono">${clienteCellHtml}</td>
-          <td>${row.direccion}</td>
-          <td class="mono">
-            <strong>${deudaFormatted}</strong>
-            <span class="sub-muted">2da: ${antFormatted} | 3ra: ${terFormatted}${pagoInfoExtra}</span>
+          <td class="mono" data-label="Medidor">${row.medidor}</td>
+          <td class="mono td-cliente" data-label="N° Cliente">${clienteCellHtml}</td>
+          <td class="td-dir" data-label="Dirección">${row.direccion}</td>
+          <td class="mono" data-label="Deuda Total">
+            <div>
+              <strong>${deudaFormatted}</strong>
+              <span class="sub-muted">2da: ${antFormatted} | 3ra: ${terFormatted}${pagoInfoExtra}</span>
+            </div>
           </td>
-          <td class="mono"><strong>${row.boletas}</strong> ${row.boletas === 1 ? "boleta" : "boletas"}</td>
-          <td class="mono">
-            ${row.fechaUltimoPago}
-            ${ultPagoMontoStr ? `<span class="sub-muted">${ultPagoMontoStr}</span>` : ""}
-          </td>
-          <td class="mono" style="color:var(--muted);font-size:0.8rem">${row.lastCheckedStr || "-"}</td>
-          <td>
-            <span class="tag ${row.css}" onclick="openAccountDocuments(${index})" title="Haz clic para ver las últimas boletas y descargar PDF">${row.tag} 📄</span>
+          <td class="mono" data-label="Boletas"><strong>${row.boletas}</strong> ${row.boletas === 1 ? "boleta" : "boletas"}</td>
+          <td class="mono" data-label="Últ. Revisión" style="color:var(--muted);font-size:0.8rem">${row.lastCheckedStr || "-"}</td>
+          <td class="td-status" data-label="Estado">
+            <span class="tag ${row.css}" onclick="openLatestPdfInApp(${index})" title="Toca para ver la última boleta">${row.tag} 📄</span>
             ${row.paidNote ? `<span class="prev-change">✔ ${row.paidNote}</span>` : ""}
           </td>
-          <td>
+          <td class="td-actions">
             <div class="btn-row" style="flex-wrap:nowrap">
-              <button class="update-btn" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="updateSingleRow(${index})" title="Actualizar esta cuenta">🔄</button>
-              <button class="detail-btn" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="openAccountDocuments(${index})" title="Ver las boletas y descargar PDF">📄</button>
-              <button class="secondary" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="showJson(${index})" title="Ver JSON Crudo">🔍</button>
-              <button class="danger" style="padding:0.3rem 0.5rem;font-size:0.75rem" onclick="deleteSingleRow(${index})" title="Eliminar fila">🗑️</button>
+              <button class="update-btn" onclick="updateSingleRow(${index})" title="Actualizar esta cuenta">🔄</button>
+              <button class="detail-btn" onclick="openLatestPdfInApp(${index})" title="Ver última boleta PDF">📄</button>
+              <button class="secondary" onclick="showJson(${index})" title="Ver JSON">🔍</button>
+              <button class="danger" onclick="deleteSingleRow(${index})" title="Eliminar fila">🗑️</button>
             </div>
           </td>
         `;
@@ -1628,16 +1553,13 @@
     function showJson(index) {
       const row = resultsData[index];
       if (!row) return;
-      document.getElementById("modalTitle").textContent =
-        `JSON Crudo - Cliente ${row.cliente}`;
-      document.getElementById("modalContent").textContent =
-        JSON.stringify(row.rawJson, null, 2);
+      document.getElementById("modalTitle").textContent = `JSON Crudo - Cliente ${row.cliente}`;
+      document.getElementById("modalContent").textContent = JSON.stringify(row.rawJson, null, 2);
       document.getElementById("jsonModal").style.display = "flex";
     }
 
     function copyModalJson() {
-      const txt = document.getElementById("modalContent").textContent;
-      navigator.clipboard.writeText(txt);
+      navigator.clipboard.writeText(document.getElementById("modalContent").textContent);
       alert("JSON copiado al portapapeles.");
     }
 
@@ -1650,26 +1572,16 @@
     }
 
     function copyAccounts() {
-      const header = "Medidor\tCliente\tDireccion\tDeudaTotal(ultBoleta)\tantBoleta\tterBoleta\tBoletas\tFechaUltimoPago\tMontoUltimoPago\tUltimaRevision\tEstado\tNota\n";
+      const header = "Medidor\tCliente\tDireccion\tDeudaTotal\tantBoleta\tterBoleta\tBoletas\tUltimaRevision\tEstado\tNota\n";
       const text = resultsData
-        .map(r => `${r.medidor}\t${r.cliente}\t${r.direccion}\t${r.deuda}\t${r.antBoleta}\t${r.terBoleta}\t${r.boletas}\t${r.fechaUltimoPago}\t${r.montoUltimoPago || ""}\t${r.lastCheckedStr || ""}\t${r.tag}\t${r.paidNote}`)
+        .map(r => `${r.medidor}\t${r.cliente}\t${r.direccion}\t${r.deuda}\t${r.antBoleta}\t${r.terBoleta}\t${r.boletas}\t${r.lastCheckedStr || ""}\t${r.tag}\t${r.paidNote}`)
         .join("\n");
       navigator.clipboard.writeText(header + text);
-      alert("¡Tabla copiada! Pégala directamente en Excel.");
+      alert("¡Tabla copiada al portapapeles!");
     }
 
-    function exportCSV() {
-      if (resultsData.length === 0) return;
-      const header = "Medidor,Cliente,Direccion,DeudaTotal_ultBoleta,antBoleta,terBoleta,CantidadBoletas,FechaUltimoPago,MontoUltimoPago,UltimaRevision,Estado,NotaPago\n";
-      const rows = resultsData.map(r =>
-        `"${r.medidor}","${r.cliente}","${(r.direccion || "").replace(/"/g, '""')}","${r.deuda}","${r.antBoleta}","${r.terBoleta}","${r.boletas}","${r.fechaUltimoPago}","${r.montoUltimoPago || ""}","${r.lastCheckedStr || ""}","${r.tag}","${(r.paidNote || "").replace(/"/g, '""')}"`
-      ).join("\n");
-      const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "reporte_deuda_cge.csv";
-      a.click();
-    }
+    // Restaurar datos guardados al abrir la app
+    window.addEventListener("DOMContentLoaded", loadPersistedState);
   </script>
 </body>
 </html>
