@@ -3,29 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-  <title>Monitor CGE v1.02</title>
+  <title>Monitor CGE v1.03</title>
   <!-- SheetJS para leer archivos Excel (.xlsx, .xls) y CSV -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- PDF.js para visualizar la última boleta dentro de la app sin descargar archivos -->
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <style>
     :root {
-      --bg: #0f172a; --card: #1e293b; --border: #334155;
+      --bg: #0f172a; --card: #1e293b; --card-inner: #0b1120; --border: #334155;
       --text: #f8fafc; --muted: #94a3b8; --accent: #3b82f6;
       --accent-hover: #2563eb; --green: #10b981; --green-hover: #059669;
       --danger: #ef4444; --danger-bg: #7f1d1d; --purple: #8b5cf6; --purple-hover: #7c3aed;
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 1rem; background: var(--bg); color: var(--text); max-width: 1600px; margin-inline: auto; }
-    h1 { margin: 0 0 0.9rem 0; font-size: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
-    .version-badge { font-size: 0.72rem; background: #0b1120; border: 1px solid var(--border); color: #38bdf8; padding: 0.2rem 0.55rem; border-radius: 999px; }
-    .grid { display: grid; grid-template-columns: 330px 1fr; gap: 1.15rem; align-items: start; }
+    body { margin: 0; padding: 0.75rem; background: var(--bg); color: var(--text); max-width: 1400px; margin-inline: auto; }
+    h1 { margin: 0 0 0.85rem 0; font-size: 1.2rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+    .version-badge { font-size: 0.72rem; background: var(--card-inner); border: 1px solid var(--border); color: #38bdf8; padding: 0.2rem 0.55rem; border-radius: 999px; }
+    .grid { display: grid; grid-template-columns: 330px 1fr; gap: 1rem; align-items: start; }
     @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; }
     .panel-toggle {
       display: none; width: 100%; justify-content: space-between; align-items: center;
-      background: #0b1120; border: 1px solid var(--border); color: var(--text);
-      padding: 0.65rem 0.85rem; border-radius: 8px; font-size: 0.88rem; margin-bottom: 0.75rem;
+      background: var(--card-inner); border: 1px solid var(--border); color: var(--text);
+      padding: 0.65rem 0.85rem; border-radius: 8px; font-size: 0.88rem; margin-bottom: 0.65rem;
     }
     @media (max-width: 980px) {
       .panel-toggle { display: flex; }
@@ -33,12 +33,12 @@
     }
     label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
     textarea, input[type="number"], input[type="text"], select {
-      width: 100%; background: #0b1120; border: 1px solid var(--border); color: var(--text);
+      width: 100%; background: var(--card-inner); border: 1px solid var(--border); color: var(--text);
       border-radius: 6px; padding: 0.6rem; font-family: monospace; font-size: 0.88rem; margin-bottom: 0.8rem;
     }
-    textarea { height: 150px; resize: vertical; }
+    textarea { height: 145px; resize: vertical; }
     .file-drop {
-      border: 1.5px dashed var(--border); background: #0b1120; border-radius: 8px;
+      border: 1.5px dashed var(--border); background: var(--card-inner); border-radius: 8px;
       padding: 0.75rem; text-align: center; cursor: pointer; margin-bottom: 0.8rem;
       transition: border-color 0.15s, background 0.15s;
     }
@@ -47,13 +47,13 @@
     }
     .file-drop input[type="file"] { display: none; }
     .excel-panel {
-      display: none; background: #0b1120; border: 1px solid var(--border);
+      display: none; background: var(--card-inner); border: 1px solid var(--border);
       border-radius: 8px; padding: 0.7rem; margin-bottom: 0.8rem;
     }
     .btn-row { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; }
     button {
-      background: var(--accent); color: white; border: none; border-radius: 6px;
-      padding: 0.55rem 0.8rem; font-weight: 600; font-size: 0.8rem; cursor: pointer;
+      background: var(--accent); color: white; border: none; border-radius: 7px;
+      padding: 0.52rem 0.78rem; font-weight: 600; font-size: 0.8rem; cursor: pointer;
       transition: opacity 0.15s, background 0.15s; touch-action: manipulation;
     }
     button:hover:not(:disabled) { background: var(--accent-hover); }
@@ -66,29 +66,51 @@
     button.secondary:hover:not(:disabled) { background: #475569; }
     button.danger { background: var(--danger-bg); color: #fecaca; }
     button.danger:hover:not(:disabled) { background: #991b1b; }
-    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; font-size: 0.84rem; color: var(--muted); flex-wrap: wrap; gap: 0.5rem; }
-    .summary-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem; align-items: center; }
-    .pill { background: #0b1120; border: 1px solid var(--border); padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.76rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
-    th, td { text-align: left; padding: 0.65rem 0.45rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
-    th { color: var(--muted); font-weight: 600; font-size: 0.73rem; text-transform: uppercase; user-select: none; }
-    th.sortable { cursor: pointer; transition: color 0.15s; }
-    th.sortable:hover { color: var(--text); }
-    th.active-sort { color: #38bdf8; }
-    tr.updating-row { background: rgba(59, 130, 246, 0.14) !important; }
-    tr.selected-row { background: rgba(239, 68, 68, 0.1) !important; }
-    input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); }
-    .mono { font-family: monospace; font-size: 0.88rem; }
-    .sub-muted { display: block; font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; font-size: 0.83rem; color: var(--muted); flex-wrap: wrap; gap: 0.5rem; }
+    .summary-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.75rem; align-items: center; }
+    .pill { background: var(--card-inner); border: 1px solid var(--border); padding: 0.28rem 0.6rem; border-radius: 999px; font-size: 0.75rem; }
+    .sort-bar {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+      gap: 0.5rem; padding: 0.45rem 0.6rem; background: var(--card-inner);
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.78rem;
+    }
+    .select-all-wrap { display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; color: var(--text); font-weight: 600; }
+    input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); margin: 0; flex-shrink: 0; }
+    .mono { font-family: monospace; }
+
+    /* Tarjetas colapsables de cuentas */
+    .account-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .account-card {
+      background: var(--card-inner); border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; transition: border-color 0.15s, background 0.15s;
+    }
+    .account-card.updating-row { border-color: var(--accent); background: rgba(59, 130, 246, 0.12); }
+    .account-card.selected-row { border-color: var(--danger); background: rgba(239, 68, 68, 0.08); }
+
+    /* Cabecera siempre visible (Dirección + N° Cliente + Estado) */
+    .account-header {
+      display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.72rem 0.75rem;
+      cursor: pointer; user-select: none;
+    }
+    .account-header-main { flex: 1; min-width: 0; }
+    .account-address {
+      font-weight: 700; font-size: 0.92rem; color: #f8fafc; line-height: 1.3;
+      word-break: break-word; margin-bottom: 0.38rem;
+    }
+    .account-meta-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.5rem; flex-wrap: wrap;
+    }
     .client-link {
-      color: #38bdf8; text-decoration: none; font-weight: 700;
-      display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+      color: #38bdf8; text-decoration: none; font-weight: 700; font-family: monospace;
+      font-size: 0.92rem; display: inline-flex; align-items: center; gap: 4px;
+      padding: 0.15rem 0.35rem; border-radius: 5px; background: rgba(56, 189, 248, 0.1);
     }
     .client-link:hover { text-decoration: underline; color: #60a5fa; }
     .tag {
-      display: inline-block; padding: 0.28rem 0.6rem; border-radius: 6px;
-      font-weight: 700; font-size: 0.74rem; letter-spacing: 0.03em; text-transform: uppercase;
-      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 4px; padding: 0.25rem 0.58rem;
+      border-radius: 6px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.03em;
+      text-transform: uppercase; cursor: pointer;
     }
     .tag:hover { filter: brightness(1.2); }
     .tag-desconexion { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
@@ -96,69 +118,68 @@
     .tag-pagado { background: rgba(34, 197, 94, 0.25); color: #4ade80; border: 1px solid #22c55e; }
     .tag-aldia { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid #475569; }
     .tag-error { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
-    .prev-change { display: block; font-size: 0.74rem; color: #4ade80; margin-top: 4px; font-weight: 600; }
-
-    /* Diseño tipo tarjeta táctil en pantallas móviles */
-    @media (max-width: 768px) {
-      body { padding: 0.6rem; }
-      .card { padding: 0.8rem; }
-      table, thead, tbody, th, td, tr { display: block; }
-      thead { display: none; }
-      tbody tr {
-        background: #0b1120; border: 1px solid var(--border); border-radius: 10px;
-        padding: 0.75rem; margin-bottom: 0.75rem; position: relative;
-      }
-      tbody td {
-        border: none; padding: 0.22rem 0; display: flex; justify-content: space-between;
-        align-items: center; gap: 0.5rem; flex-wrap: wrap;
-      }
-      tbody td::before {
-        content: attr(data-label);
-        font-size: 0.7rem; text-transform: uppercase; color: var(--muted); font-weight: 600;
-      }
-      tbody td.td-select { position: absolute; top: 0.75rem; right: 0.75rem; padding: 0; }
-      tbody td.td-select::before, tbody td.td-actions::before, tbody td.td-dir::before { display: none; }
-      tbody td.td-cliente { padding-right: 2rem; font-size: 1rem; justify-content: flex-start; }
-      tbody td.td-dir { font-weight: 600; color: #f1f5f9; font-size: 0.9rem; padding-top: 0.35rem; padding-bottom: 0.35rem; border-bottom: 1px solid #1e293b; margin-bottom: 0.25rem; }
-      tbody td.td-status { flex-direction: column; align-items: flex-start; margin-top: 0.3rem; }
-      tbody td.td-actions { margin-top: 0.55rem; padding-top: 0.55rem; border-top: 1px solid #1e293b; }
-      tbody td.td-actions .btn-row { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
-      tbody td.td-actions button { padding: 0.5rem 0.2rem; font-size: 0.82rem; text-align: center; }
+    .prev-change { display: block; font-size: 0.74rem; color: #4ade80; margin-top: 0.35rem; font-weight: 600; }
+    .expand-chevron {
+      color: var(--muted); font-size: 0.85rem; padding: 0.2rem 0.25rem;
+      transition: transform 0.15s; flex-shrink: 0;
     }
+    .account-card.expanded .expand-chevron { transform: rotate(180deg); color: var(--text); }
+
+    /* Cuerpo colapsable con Medidor, Deuda, Boletas, Revisión y Acciones */
+    .account-details {
+      display: none; border-top: 1px solid #1e293b; padding: 0.72rem 0.75rem;
+      background: rgba(15, 23, 42, 0.55);
+    }
+    .account-card.expanded .account-details { display: block; }
+
+    .detail-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.55rem 0.75rem; margin-bottom: 0.7rem;
+    }
+    .detail-item { display: flex; flex-direction: column; gap: 2px; }
+    .detail-label { font-size: 0.69rem; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
+    .detail-value { font-family: monospace; font-size: 0.9rem; color: var(--text); font-weight: 600; }
+    .detail-sub { font-size: 0.72rem; color: var(--muted); font-family: monospace; }
+
+    .card-actions {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.45rem;
+      padding-top: 0.6rem; border-top: 1px solid #1e293b;
+    }
+    .card-actions button { padding: 0.48rem 0.25rem; font-size: 0.8rem; text-align: center; }
 
     #jsonModal, #pdfModal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      align-items: center; justify-content: center; padding: 0.75rem; z-index: 50;
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+      align-items: center; justify-content: center; padding: 0.6rem; z-index: 50;
     }
     .modal-box {
       background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-      max-width: 1000px; width: 100%; max-height: 94vh; display: flex; flex-direction: column; padding: 0.9rem;
+      max-width: 1000px; width: 100%; max-height: 95vh; display: flex; flex-direction: column; padding: 0.85rem;
     }
     pre {
-      background: #0b1120; padding: 0.85rem; border-radius: 6px; overflow: auto;
+      background: var(--card-inner); padding: 0.85rem; border-radius: 6px; overflow: auto;
       font-size: 0.78rem; color: #38bdf8; margin: 0.6rem 0; flex: 1;
     }
     #pdfCanvasContainer {
-      flex: 1; overflow: auto; background: #0b1120; border-radius: 8px;
+      flex: 1; overflow: auto; background: #111827; border-radius: 8px;
       padding: 0.5rem; text-align: center; -webkit-overflow-scrolling: touch;
     }
-    #pdfCanvasContainer canvas {
-      max-width: 100%; height: auto; border-radius: 4px; margin-bottom: 0.65rem;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5); background: white;
+    #pdfCanvasContainer img {
+      display: block; max-width: 100%; height: auto; margin: 0 auto 0.65rem auto;
+      border-radius: 4px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }
   </style>
 </head>
 <body>
   <h1>
     <span>⚡ Monitor Deuda y Pagos CGE</span>
-    <span class="version-badge">v1.02 • Memoria Nativa</span>
+    <span class="version-badge">v1.03 • Lista Colapsable</span>
   </h1>
 
   <div class="grid">
     <div class="card">
       <button class="panel-toggle" id="panelToggleBtn" onclick="toggleInputPanel()">
         <span>⚙️ Configurar Lista / Importar Excel</span>
-        <span id="panelToggleIcon">▲</span>
+        <span id="panelToggleIcon">▲ Ocultar</span>
       </button>
 
       <div class="input-body" id="inputBody">
@@ -217,7 +238,6 @@
       <div class="status-bar">
         <span id="progressText">Cargando memoria...</span>
         <div class="btn-row">
-          <button id="sortAddressBtn" class="secondary" onclick="sortTableBy('direccion')" disabled>🔤 Dirección (A-Z)</button>
           <button id="deleteSelectedBtn" class="danger" onclick="deleteSelectedRows()" disabled>🗑️ Eliminar (0)</button>
           <button id="cleanAlDiaBtn" class="secondary" onclick="deleteNonDebtRows()" disabled>🧹 Quitar Al Día</button>
           <button class="update-btn" id="updateTopBtn" onclick="updateExistingTable()" disabled>🔄 Actualizar Todos</button>
@@ -233,22 +253,19 @@
         <div class="pill" style="color:#cbd5e1">Al Día: <strong id="countAlDia">0</strong></div>
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th style="width:32px"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" title="Seleccionar todos" /></th>
-            <th class="sortable" id="th-medidor" onclick="sortTableBy('medidor')"># Medidor ↕</th>
-            <th class="sortable" id="th-cliente" onclick="sortTableBy('cliente')">N° Cliente ↕</th>
-            <th class="sortable" id="th-direccion" onclick="sortTableBy('direccion')">Dirección ↕</th>
-            <th class="sortable" id="th-deuda" onclick="sortTableBy('deuda')">Deuda Total ↕</th>
-            <th class="sortable" id="th-boletas" onclick="sortTableBy('boletas')">Boletas ↕</th>
-            <th>Últ. Revisión</th>
-            <th class="sortable" id="th-tag" onclick="sortTableBy('tag')">Estado (Toca = Últ. Boleta) ↕</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="resultsBody"></tbody>
-      </table>
+      <div class="sort-bar">
+        <label class="select-all-wrap" style="margin:0">
+          <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" />
+          <span>Todos</span>
+        </label>
+        <div class="btn-row">
+          <button id="sortAddressBtn" class="secondary" style="padding:0.35rem 0.6rem;font-size:0.74rem" onclick="sortTableBy('direccion')" disabled>Dirección ↕</button>
+          <button id="sortDeudaBtn" class="secondary" style="padding:0.35rem 0.6rem;font-size:0.74rem" onclick="sortTableBy('deuda')" disabled>Deuda ↕</button>
+          <button id="sortTagBtn" class="secondary" style="padding:0.35rem 0.6rem;font-size:0.74rem" onclick="sortTableBy('tag')" disabled>Estado ↕</button>
+        </div>
+      </div>
+
+      <div id="resultsList" class="account-list"></div>
     </div>
   </div>
 
@@ -269,11 +286,11 @@
   <!-- Modal Visor de Última Boleta PDF en Memoria (Sin descargar archivo al dispositivo) -->
   <div id="pdfModal" onclick="if(event.target===this)closePdfModal()">
     <div class="modal-box">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.4rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;flex-wrap:wrap;gap:0.4rem">
         <strong id="pdfModalTitle" style="font-size:0.95rem">📄 Última Boleta</strong>
         <div class="btn-row">
-          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(-0.25)">🔍−</button>
-          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(0.25)">🔍+</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(-0.35)">🔍−</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(0.35)">🔍+</button>
           <button class="secondary" style="padding:0.4rem 0.65rem" onclick="togglePdfRawJson()">JSON</button>
           <button class="danger" style="padding:0.4rem 0.75rem" onclick="closePdfModal()">✕ Cerrar</button>
         </div>
@@ -307,11 +324,6 @@
       "x-csrf-token": "g8IS3NBw"
     };
 
-    if (window.pdfjsLib) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-    }
-
     let isRunning = false;
     let resultsData = [];
     let historyCache = {};
@@ -319,7 +331,7 @@
     let currentSortAsc = true;
 
     let currentPdfDoc = null;
-    let currentPdfScale = 1.35;
+    let currentPdfScale = 1.6;
     let lastPdfDebugJson = null;
 
     let currentWorkbook = null;
@@ -329,7 +341,7 @@
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
     // =========================================================================
-    // 1. CAPA DE ALMACENAMIENTO NATIVO PERMANENTE (@capacitor/preferences)
+    // 1. ALMACENAMIENTO NATIVO PERMANENTE (@capacitor/preferences)
     // =========================================================================
     const NativeStorage = {
       async get(key) {
@@ -346,18 +358,14 @@
         try { localStorage.setItem(key, value); } catch (e) {}
         try {
           const prefs = window.Capacitor?.Plugins?.Preferences;
-          if (prefs) {
-            await prefs.set({ key, value });
-          }
+          if (prefs) await prefs.set({ key, value });
         } catch (e) {}
       },
       async remove(key) {
         try { localStorage.removeItem(key); } catch (e) {}
         try {
           const prefs = window.Capacitor?.Plugins?.Preferences;
-          if (prefs) {
-            await prefs.remove({ key });
-          }
+          if (prefs) await prefs.remove({ key });
         } catch (e) {}
       }
     };
@@ -397,9 +405,7 @@
           NativeStorage.get(KEY_INPUTS)
         ]);
 
-        if (rawHist) {
-          historyCache = JSON.parse(rawHist) || {};
-        }
+        if (rawHist) historyCache = JSON.parse(rawHist) || {};
 
         if (rawInp) {
           const inp = JSON.parse(rawInp);
@@ -411,13 +417,24 @@
         if (rawRes) {
           const parsedRes = JSON.parse(rawRes);
           if (Array.isArray(parsedRes) && parsedRes.length > 0) {
-            resultsData = parsedRes;
+            resultsData = parsedRes.map(r => {
+              if (r.rawJson?.detalleCuentaContrato) {
+                r.direccion = buildFullAddress(
+                  r.rawJson.detalleCuentaContrato,
+                  r.rawJson.consultarDeudaPorCuentaContrato,
+                  r.rawJson.getPagoInfo,
+                  r.direccion
+                );
+              }
+              r.expanded = Boolean(r.expanded);
+              return r;
+            });
             renderTable();
             updateSummary();
             setButtonsRunningState(false);
             setInputPanelCollapsed(true);
             document.getElementById("progressText").textContent =
-              `📂 Memoria restaurada (${resultsData.length} cuentas guardadas)`;
+              `📂 Memoria restaurada (${resultsData.length} cuentas)`;
             return;
           }
         }
@@ -443,12 +460,11 @@
     }
 
     // =========================================================================
-    // 3. PANEL COLAPSABLE PARA MÓVIL Y LECTURA DE EXCEL
+    // 3. PANEL COLAPSABLE DE ENTRADA Y LECTURA DE EXCEL
     // =========================================================================
     function toggleInputPanel() {
       const body = document.getElementById("inputBody");
-      const isCollapsed = body.classList.contains("collapsed");
-      setInputPanelCollapsed(!isCollapsed);
+      setInputPanelCollapsed(!body.classList.contains("collapsed"));
     }
 
     function setInputPanelCollapsed(collapsed) {
@@ -649,32 +665,10 @@
         return currentSortAsc ? cmp : -cmp;
       });
 
-      const fields = ["medidor", "cliente", "direccion", "deuda", "boletas", "tag"];
-      const labels = {
-        medidor: "# Medidor",
-        cliente: "N° Cliente",
-        direccion: "Dirección",
-        deuda: "Deuda Total",
-        boletas: "Boletas",
-        tag: "Estado (Toca = Últ. Boleta)"
-      };
-
-      fields.forEach(f => {
-        const th = document.getElementById(`th-${f}`);
-        if (!th) return;
-        if (f === currentSortField) {
-          th.classList.add("active-sort");
-          th.textContent = `${labels[f]} ${currentSortAsc ? "▲" : "▼"}`;
-        } else {
-          th.classList.remove("active-sort");
-          th.textContent = `${labels[f]} ↕`;
-        }
-      });
-
-      const sortBtn = document.getElementById("sortAddressBtn");
-      if (sortBtn && field === "direccion") {
-        sortBtn.textContent = `🔤 Dirección (${currentSortAsc ? "A-Z ▲" : "Z-A ▼"})`;
-      }
+      const arrow = currentSortAsc ? "▲" : "▼";
+      document.getElementById("sortAddressBtn").textContent = `Dirección ${field === "direccion" ? arrow : "↕"}`;
+      document.getElementById("sortDeudaBtn").textContent = `Deuda ${field === "deuda" ? arrow : "↕"}`;
+      document.getElementById("sortTagBtn").textContent = `Estado ${field === "tag" ? arrow : "↕"}`;
 
       syncTextareaWithTable();
       renderTable();
@@ -830,6 +824,40 @@
       return res.json();
     }
 
+    // Construye dirección completa incluyendo departamento (SUPLEMENTO) y edificio/piso (PISO)
+    function buildFullAddress(detalleData, deudaCtaData, pagoData, direccionHint) {
+      const item = detalleData?.ConsultarDetalleCtaCtoResponse?.ITEM;
+      if (item && (item.CALLE || item.NUMERO_CASA)) {
+        const calle = String(item.CALLE || "").trim();
+        const numCasa = String(item.NUMERO_CASA || "").replace(/^N[°º.]?\s*/i, "").trim();
+        const suplemento = String(item.SUPLEMENTO || "").trim();
+        const piso = String(item.PISO || "").trim();
+        const comuna = String(item.COMUNA || "").trim();
+
+        const streetPart = [calle, numCasa].filter(Boolean).join(" ");
+        let unitPart = suplemento;
+        if (piso) {
+          unitPart = unitPart ? `${unitPart} (${piso})` : piso;
+        }
+
+        const full = [streetPart, unitPart, comuna].filter(Boolean).join(", ");
+        if (full) return full;
+      }
+
+      const cupon = deudaCtaData?.edatosCupon;
+      if (cupon?.direCliente) {
+        const dir = String(cupon.direCliente).trim();
+        const com = String(cupon.comCliente || "").trim();
+        return com && !dir.toUpperCase().includes(com.toUpperCase()) ? `${dir}, ${com}` : dir;
+      }
+
+      if (pagoData?.direccion && String(pagoData.direccion).trim().length > 3) {
+        return String(pagoData.direccion).trim();
+      }
+
+      return (direccionHint && direccionHint !== "-") ? direccionHint : "-";
+    }
+
     function extractAccountData(deudaCtaData, detalleData, pagoData) {
       let ultBoleta = null;
       let antBoleta = null;
@@ -923,7 +951,6 @@
       const nowTimeStr = new Date(nowMs).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
       const prev = historyCache[clienteId];
 
-      // Auto-corregir entradas antiguas guardadas con el bug del decimal ".0" (exactamente 10x mayores)
       if (prev && parsed.deuda > 0 && prev.deuda === parsed.deuda * 10) {
         prev.deuda = parsed.deuda;
         prev.lastTag = null;
@@ -997,7 +1024,7 @@
       return { tag, css, paidNote, lastCheckedStr: nowTimeStr };
     }
 
-    async function querySingleAccount(medidor, cliente, direccionHint, isSelected = false) {
+    async function querySingleAccount(medidor, cliente, direccionHint, isSelected = false, isExpanded = false) {
       const [deudaCtaJson, detalleJson, pagoJson] = await Promise.all([
         fetchDeudaPorCuenta(cliente).catch(e => ({ errorDeudaCta: String(e) })),
         fetchDetalleCuenta(cliente).catch(e => ({ errorDetalle: String(e) })),
@@ -1005,11 +1032,12 @@
       ]);
 
       const parsed = extractAccountData(deudaCtaJson, detalleJson, pagoJson);
-      const finalDir = (direccionHint && direccionHint !== "-") ? direccionHint : (parsed.direccion || "-");
+      const finalDir = buildFullAddress(detalleJson, deudaCtaJson, pagoJson, direccionHint);
       const statusInfo = classifyAccountAndUpdateHistory(cliente, parsed);
 
       return {
         selected: isSelected,
+        expanded: isExpanded,
         medidor,
         cliente,
         direccion: finalDir,
@@ -1042,6 +1070,8 @@
       document.getElementById("updateTopBtn").disabled = running || !hasValidRows;
       document.getElementById("cleanAlDiaBtn").disabled = running || resultsData.length === 0;
       document.getElementById("sortAddressBtn").disabled = running || resultsData.length <= 1;
+      document.getElementById("sortDeudaBtn").disabled = running || resultsData.length <= 1;
+      document.getElementById("sortTagBtn").disabled = running || resultsData.length <= 1;
       updateSelectionButtons();
     }
 
@@ -1067,6 +1097,15 @@
       updateTextareaCount();
     }
 
+    function toggleCardExpand(index) {
+      if (!resultsData[index]) return;
+      resultsData[index].expanded = !resultsData[index].expanded;
+      const listEl = document.getElementById("resultsList");
+      if (listEl.children[index]) {
+        listEl.children[index].classList.toggle("expanded", resultsData[index].expanded);
+      }
+    }
+
     async function deleteSingleRow(index) {
       if (isRunning) return;
       resultsData.splice(index, 1);
@@ -1080,8 +1119,10 @@
     async function toggleRowSelection(index, checked) {
       if (!resultsData[index]) return;
       resultsData[index].selected = checked;
-      const tbody = document.getElementById("resultsBody");
-      if (tbody.children[index]) tbody.children[index].classList.toggle("selected-row", checked);
+      const listEl = document.getElementById("resultsList");
+      if (listEl.children[index]) {
+        listEl.children[index].classList.toggle("selected-row", checked);
+      }
       updateSelectionButtons();
       await persistCurrentState();
     }
@@ -1134,7 +1175,7 @@
       updateSummary();
       setButtonsRunningState(true);
       setInputPanelCollapsed(true);
-      document.getElementById("resultsBody").innerHTML = "";
+      document.getElementById("resultsList").innerHTML = "";
 
       for (let i = 0; i < list.length; i++) {
         if (!isRunning) break;
@@ -1150,7 +1191,7 @@
             const items = medidorData?.items || [];
             if (items.length === 0) {
               resultsData.push({
-                selected: false,
+                selected: false, expanded: false,
                 medidor: itemInput, cliente: "-", direccion: "Medidor no encontrado",
                 deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
                 fechaUltimoPago: "-", montoUltimoPago: null,
@@ -1172,14 +1213,14 @@
 
           for (const acc of accountsToQuery) {
             if (!isRunning) break;
-            const rowObj = await querySingleAccount(acc.medidor, acc.cliente, acc.direccion, false);
+            const rowObj = await querySingleAccount(acc.medidor, acc.cliente, acc.direccion, false, false);
             resultsData.push(rowObj);
             renderTable();
             updateSummary();
           }
         } catch (err) {
           resultsData.push({
-            selected: false,
+            selected: false, expanded: false,
             medidor: itemInput, cliente: "-", direccion: "Error de red / CORS",
             deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
             fechaUltimoPago: "-", montoUltimoPago: null,
@@ -1215,7 +1256,7 @@
 
         try {
           const updatedRow = await querySingleAccount(
-            current.medidor, current.cliente, current.direccion, current.selected
+            current.medidor, current.cliente, current.direccion, current.selected, current.expanded
           );
           resultsData[i] = updatedRow;
           renderTable();
@@ -1241,7 +1282,7 @@
       highlightRowUpdating(index, true);
       try {
         const updatedRow = await querySingleAccount(
-          current.medidor, current.cliente, current.direccion, current.selected
+          current.medidor, current.cliente, current.direccion, current.selected, current.expanded
         );
         resultsData[index] = updatedRow;
         renderTable();
@@ -1253,15 +1294,15 @@
     }
 
     function highlightRowUpdating(index, isUpdating) {
-      const tbody = document.getElementById("resultsBody");
-      const tr = tbody.children[index];
-      if (tr) tr.classList.toggle("updating-row", isUpdating);
+      const listEl = document.getElementById("resultsList");
+      const card = listEl.children[index];
+      if (card) card.classList.toggle("updating-row", isUpdating);
     }
 
     function stopBatch() { isRunning = false; }
 
     // =========================================================================
-    // 4. VISOR IN-APP DE ÚLTIMA BOLETA PDF (SIN DESCARGAR ARCHIVO AL TELÉFONO)
+    // 4. VISOR IN-APP DE ÚLTIMA BOLETA PDF (RENDERIZADO COMO IMAGEN SIN DESCARGA)
     // =========================================================================
     function extractLatestDocMetadata(listaBoletasData, slData, detalleData) {
       const candidates = [];
@@ -1320,6 +1361,33 @@
       return candidates[0] || null;
     }
 
+    function decodeHexOrBase64ToPdfBytes(rawStr) {
+      if (!rawStr || typeof rawStr !== "string") return null;
+      const trimmed = rawStr.trim();
+
+      // Caso 1: Cadena hexadecimal (%PDF = 25504446)
+      if (/^25504446/i.test(trimmed)) {
+        const cleanHex = trimmed.replace(/[^0-9a-fA-F]/g, "");
+        const out = new Uint8Array(cleanHex.length / 2);
+        for (let i = 0; i < cleanHex.length; i += 2) {
+          out[i / 2] = parseInt(cleanHex.substring(i, i + 2), 16);
+        }
+        return out;
+      }
+
+      // Caso 2: Base64 (JVBERi...)
+      const cleanB64 = trimmed.replace(/^data:application\/pdf;base64,/i, "").replace(/\s/g, "");
+      if (cleanB64.startsWith("JVBERi") || cleanB64.length > 200) {
+        try {
+          const binStr = atob(cleanB64);
+          const out = new Uint8Array(binStr.length);
+          for (let i = 0; i < binStr.length; i++) out[i] = binStr.charCodeAt(i);
+          return out;
+        } catch (e) {}
+      }
+      return null;
+    }
+
     async function openLatestPdfInApp(index) {
       const row = resultsData[index];
       if (!row || !row.cliente || row.cliente === "-") return;
@@ -1361,11 +1429,11 @@
         document.getElementById("pdfMetaSubtitle").textContent =
           `${row.direccion} | Doc: ${latestDoc.opbel}${fechaStr}${montoStr}`;
 
-        statusMsg.textContent = `⏳ Cargando PDF (${latestDoc.opbel}) en pantalla...`;
+        statusMsg.textContent = `⏳ Cargando PDF (${latestDoc.opbel})...`;
 
         const res = await fetch(URL_PDF, {
           method: "POST",
-          headers: { ...COMMON_HEADERS, "responsetype": "arraybuffer" },
+          headers: COMMON_HEADERS,
           body: JSON.stringify({
             Documentos: { OPBEL: latestDoc.opbel },
             Sociedad: "E200",
@@ -1377,54 +1445,38 @@
           })
         });
 
-        const buffer = await res.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
+        const textResponse = await res.text();
         let pdfBytes = null;
 
-        if (bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
-          pdfBytes = bytes;
+        if (textResponse.startsWith("%PDF")) {
+          pdfBytes = new Uint8Array(textResponse.length);
+          for (let i = 0; i < textResponse.length; i++) pdfBytes[i] = textResponse.charCodeAt(i) & 0xff;
         } else {
-          const textResponse = new TextDecoder("utf-8").decode(bytes).trim();
           try {
             const jsonObj = JSON.parse(textResponse);
             lastPdfDebugJson.respuestaPDF = jsonObj;
 
-            let encodedPdf = null;
-            const findPdfStr = (obj) => {
-              if (!obj || typeof obj !== "object") return;
+            const searchPdfPayload = (obj) => {
+              if (!obj || typeof obj !== "object") return null;
               for (const val of Object.values(obj)) {
-                if (typeof val === "string" && (val.startsWith("JVBERi") || val.startsWith("25504446") || val.length > 500)) {
-                  encodedPdf = val;
-                  return;
+                if (typeof val === "string" && val.length > 100) {
+                  const decoded = decodeHexOrBase64ToPdfBytes(val);
+                  if (decoded) return decoded;
                 } else if (val && typeof val === "object") {
-                  findPdfStr(val);
+                  const found = searchPdfPayload(val);
+                  if (found) return found;
                 }
               }
+              return null;
             };
-            findPdfStr(jsonObj);
-
-            if (encodedPdf && encodedPdf.startsWith("25504446")) {
-              const cleanHex = encodedPdf.replace(/[^0-9a-fA-F]/g, "");
-              pdfBytes = new Uint8Array(cleanHex.length / 2);
-              for (let i = 0; i < cleanHex.length; i += 2) {
-                pdfBytes[i / 2] = parseInt(cleanHex.substring(i, i + 2), 16);
-              }
-            } else if (encodedPdf) {
-              const cleanB64 = encodedPdf.replace(/^data:application\/pdf;base64,/, "").replace(/\s/g, "");
-              const binStr = atob(cleanB64);
-              pdfBytes = new Uint8Array(binStr.length);
-              for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
-            }
+            pdfBytes = searchPdfPayload(jsonObj);
           } catch {
-            if (textResponse.startsWith("JVBERi")) {
-              const binStr = atob(textResponse.replace(/\s/g, ""));
-              pdfBytes = new Uint8Array(binStr.length);
-              for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
-            }
+            pdfBytes = decodeHexOrBase64ToPdfBytes(textResponse);
           }
         }
 
-        if (!pdfBytes) {
+        if (!pdfBytes || pdfBytes.length < 100) {
+          lastPdfDebugJson.rawPreview = textResponse.slice(0, 600);
           statusMsg.textContent = "⚠️ El servidor no devolvió un PDF válido (toca 'JSON' arriba para revisar).";
           return;
         }
@@ -1434,9 +1486,14 @@
           return;
         }
 
-        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+        // disableWorker: true evita bloqueos de Web Worker cross-origin en Android WebView
+        const loadingTask = pdfjsLib.getDocument({
+          data: pdfBytes,
+          disableWorker: true,
+          isEvalSupported: false
+        });
         currentPdfDoc = await loadingTask.promise;
-        currentPdfScale = window.innerWidth < 768 ? 1.15 : 1.5;
+        currentPdfScale = 1.6;
         await renderPdfPages();
         statusMsg.style.display = "none";
       } catch (err) {
@@ -1455,22 +1512,35 @@
         const page = await currentPdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: currentPdfScale });
 
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        const offscreenCanvas = document.createElement("canvas");
+        const ctx = offscreenCanvas.getContext("2d", { alpha: false });
+        offscreenCanvas.width = Math.floor(viewport.width * dpr);
+        offscreenCanvas.height = Math.floor(viewport.height * dpr);
 
-        ctx.scale(dpr, dpr);
-        container.appendChild(canvas);
+        // Fondo blanco explícito para evitar transparencia en Android WebView
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: viewport,
+          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
+        };
+
+        await page.render(renderContext).promise;
+
+        // Convertir a <img> PNG para que WebView no borre ni deje en blanco la capa GPU del canvas
+        const img = document.createElement("img");
+        img.src = offscreenCanvas.toDataURL("image/png");
+        img.alt = `Página ${pageNum}`;
+        img.style.width = `${Math.floor(viewport.width)}px`;
+        container.appendChild(img);
       }
     }
 
     async function changePdfZoom(delta) {
       if (!currentPdfDoc) return;
-      currentPdfScale = Math.max(0.6, Math.min(3.0, currentPdfScale + delta));
+      currentPdfScale = Math.max(0.8, Math.min(3.2, currentPdfScale + delta));
       await renderPdfPages();
     }
 
@@ -1491,15 +1561,17 @@
     }
 
     // =========================================================================
-    // 5. RENDERIZADO DE TABLA / TARJETAS MÓVILES
+    // 5. RENDERIZADO DE LISTA COLAPSABLE
     // =========================================================================
     function renderTable() {
-      const tbody = document.getElementById("resultsBody");
-      tbody.innerHTML = "";
+      const listEl = document.getElementById("resultsList");
+      listEl.innerHTML = "";
 
       resultsData.forEach((row, index) => {
-        const tr = document.createElement("tr");
-        if (row.selected) tr.classList.add("selected-row");
+        const card = document.createElement("div");
+        card.className = "account-card";
+        if (row.selected) card.classList.add("selected-row");
+        if (row.expanded) card.classList.add("expanded");
 
         const deudaFormatted = "$" + Number(row.deuda || 0).toLocaleString("es-CL");
         const antFormatted = "$" + Number(row.antBoleta || 0).toLocaleString("es-CL");
@@ -1509,43 +1581,64 @@
           : "";
 
         const portalUrl = `https://sucursalvirtual.cge.cl/detalle-de-cuenta?ctacto=${row.cliente}`;
-        const clienteCellHtml = (row.cliente && row.cliente !== "-")
-          ? `<a href="#" class="client-link" onclick="event.preventDefault(); openExternalUrl('${portalUrl}')" title="Abrir en el navegador">🌐 ${row.cliente}</a>`
-          : `-`;
+        const clienteHtml = (row.cliente && row.cliente !== "-")
+          ? `<a href="#" class="client-link" onclick="event.preventDefault(); event.stopPropagation(); openExternalUrl('${portalUrl}')" title="Abrir en el navegador">🌐 ${row.cliente}</a>`
+          : `<span class="mono" style="color:var(--muted)">Sin cliente</span>`;
 
-        tr.innerHTML = `
-          <td class="td-select">
-            <input type="checkbox" ${row.selected ? "checked" : ""} onchange="toggleRowSelection(${index}, this.checked)" />
-          </td>
-          <td class="mono" data-label="Medidor">${row.medidor}</td>
-          <td class="mono td-cliente" data-label="N° Cliente">${clienteCellHtml}</td>
-          <td class="td-dir" data-label="Dirección">${row.direccion}</td>
-          <td class="mono" data-label="Deuda Total">
-            <div>
-              <strong>${deudaFormatted}</strong>
-              <span class="sub-muted">2da: ${antFormatted} | 3ra: ${terFormatted}${pagoInfoExtra}</span>
+        card.innerHTML = `
+          <div class="account-header" onclick="toggleCardExpand(${index})">
+            <input type="checkbox" ${row.selected ? "checked" : ""}
+              onclick="event.stopPropagation()"
+              onchange="toggleRowSelection(${index}, this.checked)" />
+
+            <div class="account-header-main">
+              <div class="account-address">${row.direccion}</div>
+              <div class="account-meta-row">
+                ${clienteHtml}
+                <span class="tag ${row.css}" onclick="event.stopPropagation(); openLatestPdfInApp(${index})" title="Toca para ver la última boleta">${row.tag} 📄</span>
+              </div>
+              ${row.paidNote ? `<span class="prev-change">✔ ${row.paidNote}</span>` : ""}
             </div>
-          </td>
-          <td class="mono" data-label="Boletas"><strong>${row.boletas}</strong> ${row.boletas === 1 ? "boleta" : "boletas"}</td>
-          <td class="mono" data-label="Últ. Revisión" style="color:var(--muted);font-size:0.8rem">${row.lastCheckedStr || "-"}</td>
-          <td class="td-status" data-label="Estado">
-            <span class="tag ${row.css}" onclick="openLatestPdfInApp(${index})" title="Toca para ver la última boleta">${row.tag} 📄</span>
-            ${row.paidNote ? `<span class="prev-change">✔ ${row.paidNote}</span>` : ""}
-          </td>
-          <td class="td-actions">
-            <div class="btn-row" style="flex-wrap:nowrap">
+
+            <div class="expand-chevron" title="Ver detalles">▼</div>
+          </div>
+
+          <div class="account-details">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">Medidor</span>
+                <span class="detail-value">${row.medidor}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Boletas</span>
+                <span class="detail-value">${row.boletas}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Deuda Total</span>
+                <span class="detail-value">${deudaFormatted}</span>
+                <span class="detail-sub">2da: ${antFormatted} | 3ra: ${terFormatted}${pagoInfoExtra}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Últ. Revisión</span>
+                <span class="detail-value" style="color:var(--muted)">${row.lastCheckedStr || "-"}</span>
+              </div>
+            </div>
+
+            <div class="card-actions">
               <button class="update-btn" onclick="updateSingleRow(${index})" title="Actualizar esta cuenta">🔄</button>
               <button class="detail-btn" onclick="openLatestPdfInApp(${index})" title="Ver última boleta PDF">📄</button>
               <button class="secondary" onclick="showJson(${index})" title="Ver JSON">🔍</button>
               <button class="danger" onclick="deleteSingleRow(${index})" title="Eliminar fila">🗑️</button>
             </div>
-          </td>
+          </div>
         `;
-        tbody.appendChild(tr);
+        listEl.appendChild(card);
       });
 
-      const sortBtn = document.getElementById("sortAddressBtn");
-      if (sortBtn) sortBtn.disabled = isRunning || resultsData.length <= 1;
+      const disableSort = isRunning || resultsData.length <= 1;
+      document.getElementById("sortAddressBtn").disabled = disableSort;
+      document.getElementById("sortDeudaBtn").disabled = disableSort;
+      document.getElementById("sortTagBtn").disabled = disableSort;
 
       updateSelectionButtons();
     }
@@ -1580,7 +1673,6 @@
       alert("¡Tabla copiada al portapapeles!");
     }
 
-    // Restaurar datos guardados al abrir la app
     window.addEventListener("DOMContentLoaded", loadPersistedState);
   </script>
 </body>
