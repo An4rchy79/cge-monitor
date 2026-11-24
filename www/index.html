@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-  <title>Monitor CGE v1.03</title>
+  <title>Monitor CGE v1.05</title>
   <!-- SheetJS para leer archivos Excel (.xlsx, .xls) y CSV -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- PDF.js para visualizar la última boleta dentro de la app sin descargar archivos -->
+  <!-- PDF.js + Worker embebido para renderizar en hilo principal dentro de Android WebView -->
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
   <style>
     :root {
       --bg: #0f172a; --card: #1e293b; --card-inner: #0b1120; --border: #334155;
@@ -125,7 +126,7 @@
     }
     .account-card.expanded .expand-chevron { transform: rotate(180deg); color: var(--text); }
 
-    /* Cuerpo colapsable con Medidor, Deuda, Boletas, Revisión y Acciones */
+    /* Cuerpo colapsable con Medidor, Deuda, Boletas, Línea Base y Acciones */
     .account-details {
       display: none; border-top: 1px solid #1e293b; padding: 0.72rem 0.75rem;
       background: rgba(15, 23, 42, 0.55);
@@ -172,7 +173,7 @@
 <body>
   <h1>
     <span>⚡ Monitor Deuda y Pagos CGE</span>
-    <span class="version-badge">v1.03 • Lista Colapsable</span>
+    <span class="version-badge" id="historyBadge">v1.05 • 0 en historial</span>
   </h1>
 
   <div class="grid">
@@ -226,8 +227,11 @@
         </div>
 
         <hr style="border:0; border-top:1px solid var(--border); margin: 0.9rem 0;" />
-        <label>Gestión de Memoria Guardada</label>
+        <label>Gestión de Memoria Permanente</label>
         <div class="btn-row">
+          <button class="secondary" onclick="exportBackupJson()">💾 Respaldar</button>
+          <button class="secondary" onclick="document.getElementById('backupInput').click()">📥 Restaurar</button>
+          <input type="file" id="backupInput" accept=".json" style="display:none" onchange="importBackupJson(event)" />
           <button class="secondary danger" onclick="clearHistory()">Reiniciar Línea Base</button>
           <button class="secondary danger" onclick="clearAllSavedData()">🗑️ Borrar Todo</button>
         </div>
@@ -289,8 +293,8 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;flex-wrap:wrap;gap:0.4rem">
         <strong id="pdfModalTitle" style="font-size:0.95rem">📄 Última Boleta</strong>
         <div class="btn-row">
-          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(-0.35)">🔍−</button>
-          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(0.35)">🔍+</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(-0.25)">🔍−</button>
+          <button class="secondary" style="padding:0.4rem 0.65rem" onclick="changePdfZoom(0.25)">🔍+</button>
           <button class="secondary" style="padding:0.4rem 0.65rem" onclick="togglePdfRawJson()">JSON</button>
           <button class="danger" style="padding:0.4rem 0.75rem" onclick="closePdfModal()">✕ Cerrar</button>
         </div>
@@ -312,9 +316,9 @@
     const URL_LISTA_BOLETAS = "https://orchestrator-portalescge-prd.lfr.cloud/consultarListaUltimasBoletas";
     const URL_PDF = "https://orchestrator-portalescge-prd.lfr.cloud/consultarDetalleBoletaPDF";
 
-    const KEY_HISTORY = "cge_debt_history_v7";
-    const KEY_RESULTS = "cge_saved_results_v1";
-    const KEY_INPUTS = "cge_saved_inputs_v1";
+    const KEY_HISTORY = "cge_debt_history_v8";
+    const KEY_RESULTS = "cge_saved_results_v2";
+    const KEY_INPUTS = "cge_saved_inputs_v2";
 
     const COMMON_HEADERS = {
       "accept": "*/*",
@@ -325,13 +329,14 @@
     };
 
     let isRunning = false;
+    let isStorageReady = false;
     let resultsData = [];
     let historyCache = {};
     let currentSortField = null;
     let currentSortAsc = true;
 
     let currentPdfDoc = null;
-    let currentPdfScale = 1.6;
+    let currentPdfZoom = 1.0;
     let lastPdfDebugJson = null;
 
     let currentWorkbook = null;
@@ -370,6 +375,12 @@
       }
     };
 
+    function updateHistoryBadge() {
+      const uniqueClients = Object.keys(historyCache).filter(k => !k.startsWith("m_")).length;
+      const badge = document.getElementById("historyBadge");
+      if (badge) badge.textContent = `v1.05 • ${uniqueClients} en historial`;
+    }
+
     async function persistCurrentState() {
       const compactResults = resultsData.map(r => {
         const cleanRaw = r.rawJson ? {
@@ -390,22 +401,27 @@
         meters: document.getElementById("meters").value
       };
 
+      updateHistoryBadge();
+
       await Promise.all([
+        NativeStorage.set(KEY_HISTORY, JSON.stringify(historyCache)),
         NativeStorage.set(KEY_RESULTS, JSON.stringify(compactResults)),
-        NativeStorage.set(KEY_INPUTS, JSON.stringify(inputState)),
-        NativeStorage.set(KEY_HISTORY, JSON.stringify(historyCache))
+        NativeStorage.set(KEY_INPUTS, JSON.stringify(inputState))
       ]);
     }
 
     async function loadPersistedState() {
       try {
-        const [rawHist, rawRes, rawInp] = await Promise.all([
+        const [rawHist, rawHistLegacy, rawRes, rawInp] = await Promise.all([
           NativeStorage.get(KEY_HISTORY),
+          NativeStorage.get("cge_debt_history_v7"),
           NativeStorage.get(KEY_RESULTS),
           NativeStorage.get(KEY_INPUTS)
         ]);
 
-        if (rawHist) historyCache = JSON.parse(rawHist) || {};
+        const chosenHist = rawHist || rawHistLegacy;
+        if (chosenHist) historyCache = JSON.parse(chosenHist) || {};
+        updateHistoryBadge();
 
         if (rawInp) {
           const inp = JSON.parse(rawInp);
@@ -433,6 +449,7 @@
             updateSummary();
             setButtonsRunningState(false);
             setInputPanelCollapsed(true);
+            isStorageReady = true;
             document.getElementById("progressText").textContent =
               `📂 Memoria restaurada (${resultsData.length} cuentas)`;
             return;
@@ -442,7 +459,54 @@
         console.warn("Error cargando estado guardado:", e);
       }
 
+      isStorageReady = true;
       document.getElementById("progressText").textContent = "Listo para consultar";
+    }
+
+    function exportBackupJson() {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        historyCache,
+        resultsData,
+        inputs: {
+          inputType: document.getElementById("inputType").value,
+          meters: document.getElementById("meters").value
+        }
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `respaldo_cge_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+
+    function importBackupJson(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (parsed.historyCache) historyCache = { ...historyCache, ...parsed.historyCache };
+          if (Array.isArray(parsed.resultsData) && parsed.resultsData.length > 0) {
+            resultsData = parsed.resultsData;
+          }
+          if (parsed.inputs?.meters) {
+            document.getElementById("meters").value = parsed.inputs.meters;
+            updateTextareaCount();
+          }
+          await persistCurrentState();
+          renderTable();
+          updateSummary();
+          setButtonsRunningState(false);
+          alert(`Respaldo restaurado (${Object.keys(historyCache).filter(k => !k.startsWith("m_")).length} cuentas en historial).`);
+        } catch (err) {
+          alert("Archivo de respaldo inválido: " + err.message);
+        }
+      };
+      reader.readAsText(file);
     }
 
     // =========================================================================
@@ -678,7 +742,11 @@
     async function clearHistory() {
       if (confirm("¿Seguro que deseas borrar la línea base de pagos guardada?")) {
         historyCache = {};
-        await NativeStorage.remove(KEY_HISTORY);
+        updateHistoryBadge();
+        await Promise.all([
+          NativeStorage.remove(KEY_HISTORY),
+          NativeStorage.remove("cge_debt_history_v7")
+        ]);
         alert("Línea base reiniciada.");
       }
     }
@@ -689,8 +757,10 @@
         resultsData = [];
         document.getElementById("meters").value = "";
         updateTextareaCount();
+        updateHistoryBadge();
         await Promise.all([
           NativeStorage.remove(KEY_HISTORY),
+          NativeStorage.remove("cge_debt_history_v7"),
           NativeStorage.remove(KEY_RESULTS),
           NativeStorage.remove(KEY_INPUTS)
         ]);
@@ -815,7 +885,7 @@
         headers: COMMON_HEADERS,
         body: JSON.stringify({
           CuentaContrato: cleanClient,
-          CantidadDocumentos: "5",
+          CantidadDocumentos: "13",
           RangoFechas: "",
           Sociedad: "E200",
           url: "OFVCGE_P"
@@ -824,7 +894,6 @@
       return res.json();
     }
 
-    // Construye dirección completa incluyendo departamento (SUPLEMENTO) y edificio/piso (PISO)
     function buildFullAddress(detalleData, deudaCtaData, pagoData, direccionHint) {
       const item = detalleData?.ConsultarDetalleCtaCtoResponse?.ITEM;
       if (item && (item.CALLE || item.NUMERO_CASA)) {
@@ -946,53 +1015,44 @@
       };
     }
 
-    function classifyAccountAndUpdateHistory(clienteId, parsed) {
+    function classifyAccountAndUpdateHistory(clienteId, medidorId, parsed) {
+      const cleanId = String(clienteId).trim().replace(/^0+/, "");
+      const cleanMeter = String(medidorId || "").trim();
       const nowMs = Date.now();
       const nowTimeStr = new Date(nowMs).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
-      const prev = historyCache[clienteId];
+
+      const prev = historyCache[cleanId] || (cleanMeter && cleanMeter !== "-" ? historyCache[`m_${cleanMeter}`] : null);
 
       if (prev && parsed.deuda > 0 && prev.deuda === parsed.deuda * 10) {
         prev.deuda = parsed.deuda;
+        if (prev.peakDeuda) prev.peakDeuda = parsed.deuda;
         prev.lastTag = null;
         prev.paidNote = "";
       }
+
+      const baselineDeuda = prev ? (prev.peakDeuda ?? prev.deuda ?? 0) : parsed.deuda;
+      const baselineBoletas = prev ? (prev.peakBoletas ?? prev.boletas ?? 0) : parsed.boletas;
+      const prevLastDeuda = prev ? (prev.lastDeuda ?? baselineDeuda) : parsed.deuda;
 
       let paidNote = "";
       let isPaidSinceLastCheck = false;
 
       if (prev) {
-        const payDateChangedToNewer =
-          parsed.fechaPagoIso &&
-          prev.fechaPagoIso &&
-          parsed.fechaPagoIso !== prev.fechaPagoIso &&
-          (!parsed.fechaPagoTs || !prev.fechaPagoTs || parsed.fechaPagoTs > prev.fechaPagoTs);
+        const newDebtAccumulated = parsed.deuda > prevLastDeuda && prev.lastTag === "PAGADO";
+        const debtCleared = (baselineDeuda > 0 || baselineBoletas > 0) && parsed.deuda === 0 && parsed.boletas === 0;
+        const debtReduced = (parsed.deuda < baselineDeuda) || (parsed.boletas < baselineBoletas);
 
-        const prevCheckStartOfDay = prev.firstCheckMs
-          ? new Date(new Date(prev.firstCheckMs).setHours(0, 0, 0, 0)).getTime()
-          : null;
-
-        const payDateIsAfterCheck =
-          parsed.fechaPagoTs &&
-          prevCheckStartOfDay &&
-          parsed.fechaPagoTs >= prevCheckStartOfDay &&
-          (prev.deuda > 0 || prev.fechaPagoIso !== parsed.fechaPagoIso);
-
-        const debtCleared = (prev.deuda > 0 || prev.boletas > 0) && parsed.deuda === 0 && parsed.boletas === 0;
-        const debtReduced = (parsed.deuda < prev.deuda) || (parsed.boletas < prev.boletas);
-
-        if (payDateChangedToNewer || payDateIsAfterCheck) {
-          isPaidSinceLastCheck = true;
-          const montoStr = parsed.montoUltimoPago ? ` ($${parsed.montoUltimoPago.toLocaleString("es-CL")})` : "";
-          paidNote = `Pago detectado el ${parsed.fechaUltimoPago}${montoStr}`;
-        } else if (debtCleared) {
-          isPaidSinceLastCheck = true;
-          paidNote = `Pagó total (Antes: $${prev.deuda.toLocaleString("es-CL")} / ${prev.boletas} bol.)`;
-        } else if (debtReduced) {
-          isPaidSinceLastCheck = true;
-          paidNote = `Abonó (Antes: $${prev.deuda.toLocaleString("es-CL")} → Ahora: $${parsed.deuda.toLocaleString("es-CL")})`;
-        } else if (prev.lastTag === "PAGADO") {
-          isPaidSinceLastCheck = true;
-          paidNote = prev.paidNote || "Pagado en revisión previa";
+        if (!newDebtAccumulated) {
+          if (debtCleared) {
+            isPaidSinceLastCheck = true;
+            paidNote = `Pagó total (Antes: $${baselineDeuda.toLocaleString("es-CL")} [${baselineBoletas} bol.] → $0)`;
+          } else if (debtReduced) {
+            isPaidSinceLastCheck = true;
+            paidNote = `Pagó (Antes: $${baselineDeuda.toLocaleString("es-CL")} [${baselineBoletas} bol.] → Ahora: $${parsed.deuda.toLocaleString("es-CL")} [${parsed.boletas} bol.])`;
+          } else if (prev.lastTag === "PAGADO") {
+            isPaidSinceLastCheck = true;
+            paidNote = prev.paidNote || "Pagado en revisión previa";
+          }
         }
       }
 
@@ -1010,18 +1070,29 @@
         css = "tag-detalle";
       }
 
-      historyCache[clienteId] = {
-        deuda: prev ? Math.max(prev.deuda, parsed.deuda) : parsed.deuda,
-        boletas: prev ? Math.max(prev.boletas, parsed.boletas) : parsed.boletas,
-        fechaPagoIso: prev?.fechaPagoIso || parsed.fechaPagoIso,
-        fechaPagoTs: prev?.fechaPagoTs || parsed.fechaPagoTs,
+      const nextPeakDeuda = Math.max(baselineDeuda, parsed.deuda);
+      const nextPeakBoletas = Math.max(baselineBoletas, parsed.boletas);
+
+      const record = {
+        deuda: nextPeakDeuda,
+        boletas: nextPeakBoletas,
+        peakDeuda: nextPeakDeuda,
+        peakBoletas: nextPeakBoletas,
+        lastDeuda: parsed.deuda,
+        lastBoletas: parsed.boletas,
         firstCheckMs: prev?.firstCheckMs || nowMs,
         lastCheckMs: nowMs,
         lastTag: tag,
         paidNote
       };
 
-      return { tag, css, paidNote, lastCheckedStr: nowTimeStr };
+      historyCache[cleanId] = record;
+      if (cleanMeter && cleanMeter !== "-") {
+        historyCache[`m_${cleanMeter}`] = record;
+      }
+
+      const baselineSummary = `$${nextPeakDeuda.toLocaleString("es-CL")} (${nextPeakBoletas} bol.)`;
+      return { tag, css, paidNote, baselineSummary, lastCheckedStr: nowTimeStr };
     }
 
     async function querySingleAccount(medidor, cliente, direccionHint, isSelected = false, isExpanded = false) {
@@ -1033,7 +1104,7 @@
 
       const parsed = extractAccountData(deudaCtaJson, detalleJson, pagoJson);
       const finalDir = buildFullAddress(detalleJson, deudaCtaJson, pagoJson, direccionHint);
-      const statusInfo = classifyAccountAndUpdateHistory(cliente, parsed);
+      const statusInfo = classifyAccountAndUpdateHistory(cliente, medidor, parsed);
 
       return {
         selected: isSelected,
@@ -1047,6 +1118,7 @@
         antBoleta: parsed.antBoleta,
         terBoleta: parsed.terBoleta,
         boletas: parsed.boletas,
+        baselineSummary: statusInfo.baselineSummary,
         fechaUltimoPago: parsed.fechaUltimoPago,
         montoUltimoPago: parsed.montoUltimoPago,
         lastCheckedStr: statusInfo.lastCheckedStr,
@@ -1163,6 +1235,8 @@
     }
 
     async function startBatch() {
+      if (!isStorageReady) await loadPersistedState();
+
       const mode = document.getElementById("inputType").value;
       const rawInput = document.getElementById("meters").value;
       const delayMs = parseInt(document.getElementById("delay").value || "450", 10);
@@ -1194,12 +1268,14 @@
                 selected: false, expanded: false,
                 medidor: itemInput, cliente: "-", direccion: "Medidor no encontrado",
                 deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
+                baselineSummary: "-",
                 fechaUltimoPago: "-", montoUltimoPago: null,
                 lastCheckedStr: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
                 tag: "SIN DATOS", css: "tag-error", paidNote: "", rawJson: medidorData
               });
               renderTable();
               updateSummary();
+              await persistCurrentState();
               continue;
             }
             accountsToQuery = items.map(it => ({
@@ -1217,24 +1293,26 @@
             resultsData.push(rowObj);
             renderTable();
             updateSummary();
+            await persistCurrentState();
           }
         } catch (err) {
           resultsData.push({
             selected: false, expanded: false,
             medidor: itemInput, cliente: "-", direccion: "Error de red / CORS",
             deuda: 0, deudaPagoInfo: 0, ultBoleta: 0, antBoleta: 0, terBoleta: 0, boletas: 0,
+            baselineSummary: "-",
             fechaUltimoPago: "-", montoUltimoPago: null,
             lastCheckedStr: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
             tag: "ERROR", css: "tag-error", paidNote: "", rawJson: { error: String(err) }
           });
           renderTable();
           updateSummary();
+          await persistCurrentState();
         }
 
         if (i < list.length - 1 && isRunning && delayMs > 0) await sleep(delayMs);
       }
 
-      await persistCurrentState();
       setButtonsRunningState(false);
       document.getElementById("progressText").textContent =
         `Finalizado (${resultsData.length} cuentas guardadas)`;
@@ -1261,6 +1339,7 @@
           resultsData[i] = updatedRow;
           renderTable();
           updateSummary();
+          await persistCurrentState();
         } catch (e) {
           highlightRowUpdating(i, false);
         }
@@ -1268,7 +1347,6 @@
         if (i < resultsData.length - 1 && isRunning && delayMs > 0) await sleep(delayMs);
       }
 
-      await persistCurrentState();
       setButtonsRunningState(false);
       document.getElementById("progressText").textContent =
         `✅ Actualizado y guardado a las ${new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`;
@@ -1302,7 +1380,7 @@
     function stopBatch() { isRunning = false; }
 
     // =========================================================================
-    // 4. VISOR IN-APP DE ÚLTIMA BOLETA PDF (RENDERIZADO COMO IMAGEN SIN DESCARGA)
+    // 4. VISOR IN-APP DE ÚLTIMA BOLETA PDF (CAPACITOR NATIVE ARRAYBUFFER)
     // =========================================================================
     function extractLatestDocMetadata(listaBoletasData, slData, detalleData) {
       const candidates = [];
@@ -1344,6 +1422,7 @@
                 lowerMap["descripcion"] ?? "DETALLE DE FACTURACIÓN CARGOS TARIFARIOS DECRETO VAD 5T-2024"
               ).trim(),
               fechaEmision: parsedEmis ? parsedEmis.display : "",
+              fechaTs: parsedEmis?.timestamp || 0,
               monto: parseCLP(lowerMap["monto"] ?? lowerMap["montototal"] ?? lowerMap["total"] ?? lowerMap["betrw"] ?? 0) ?? 0
             });
           }
@@ -1358,14 +1437,26 @@
       if (candidates.length === 0) inspectNode(slData);
       if (candidates.length === 0) inspectNode(detalleData);
 
+      candidates.sort((a, b) => {
+        if (b.fechaTs !== a.fechaTs) return b.fechaTs - a.fechaTs;
+        return Number(b.opbel) - Number(a.opbel);
+      });
+
       return candidates[0] || null;
+    }
+
+    function base64ToUint8Array(b64) {
+      const cleanB64 = String(b64).replace(/^data:application\/pdf;base64,/i, "").replace(/\s/g, "");
+      const binStr = atob(cleanB64);
+      const out = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) out[i] = binStr.charCodeAt(i);
+      return out;
     }
 
     function decodeHexOrBase64ToPdfBytes(rawStr) {
       if (!rawStr || typeof rawStr !== "string") return null;
       const trimmed = rawStr.trim();
 
-      // Caso 1: Cadena hexadecimal (%PDF = 25504446)
       if (/^25504446/i.test(trimmed)) {
         const cleanHex = trimmed.replace(/[^0-9a-fA-F]/g, "");
         const out = new Uint8Array(cleanHex.length / 2);
@@ -1375,17 +1466,43 @@
         return out;
       }
 
-      // Caso 2: Base64 (JVBERi...)
       const cleanB64 = trimmed.replace(/^data:application\/pdf;base64,/i, "").replace(/\s/g, "");
       if (cleanB64.startsWith("JVBERi") || cleanB64.length > 200) {
         try {
-          const binStr = atob(cleanB64);
-          const out = new Uint8Array(binStr.length);
-          for (let i = 0; i < binStr.length; i++) out[i] = binStr.charCodeAt(i);
-          return out;
+          return base64ToUint8Array(cleanB64);
         } catch (e) {}
       }
       return null;
+    }
+
+    async function fetchPdfBinaryNative(payload) {
+      // En Android Capacitor, usar CapacitorHttp.post con responseType: 'arraybuffer'
+      // evita que el puente UTF-8 corrompa los bytes binarios del PDF.
+      const nativeHttp = window.Capacitor?.Plugins?.CapacitorHttp;
+      if (nativeHttp && typeof nativeHttp.post === "function") {
+        const nativeRes = await nativeHttp.post({
+          url: URL_PDF,
+          headers: COMMON_HEADERS,
+          data: payload,
+          responseType: "arraybuffer"
+        });
+        if (nativeRes && typeof nativeRes.data === "string") {
+          return base64ToUint8Array(nativeRes.data);
+        }
+        if (nativeRes && nativeRes.data && typeof nativeRes.data === "object") {
+          const encoded = new TextEncoder().encode(JSON.stringify(nativeRes.data));
+          return encoded;
+        }
+      }
+
+      // Fallback para navegador web estándar
+      const res = await fetch(URL_PDF, {
+        method: "POST",
+        headers: COMMON_HEADERS,
+        body: JSON.stringify(payload)
+      });
+      const buf = await res.arrayBuffer();
+      return new Uint8Array(buf);
     }
 
     async function openLatestPdfInApp(index) {
@@ -1429,29 +1546,26 @@
         document.getElementById("pdfMetaSubtitle").textContent =
           `${row.direccion} | Doc: ${latestDoc.opbel}${fechaStr}${montoStr}`;
 
-        statusMsg.textContent = `⏳ Cargando PDF (${latestDoc.opbel})...`;
+        statusMsg.textContent = `⏳ Descargando PDF en memoria (${latestDoc.opbel})...`;
 
-        const res = await fetch(URL_PDF, {
-          method: "POST",
-          headers: COMMON_HEADERS,
-          body: JSON.stringify({
-            Documentos: { OPBEL: latestDoc.opbel },
-            Sociedad: "E200",
-            cuentaContrato: cleanClient,
-            signedIn: false,
-            url: "OFVCGE_P",
-            title: latestDoc.title,
-            fechaEmision: latestDoc.fechaEmision
-          })
-        });
+        const pdfPayload = {
+          Documentos: { OPBEL: latestDoc.opbel },
+          Sociedad: "E200",
+          cuentaContrato: cleanClient,
+          signedIn: false,
+          url: "OFVCGE_P",
+          title: latestDoc.title,
+          fechaEmision: latestDoc.fechaEmision
+        };
 
-        const textResponse = await res.text();
+        const rawBytes = await fetchPdfBinaryNative(pdfPayload);
         let pdfBytes = null;
 
-        if (textResponse.startsWith("%PDF")) {
-          pdfBytes = new Uint8Array(textResponse.length);
-          for (let i = 0; i < textResponse.length; i++) pdfBytes[i] = textResponse.charCodeAt(i) & 0xff;
-        } else {
+        // Verificar si los bytes comienzan con %PDF (0x25 0x50 0x44 0x46)
+        if (rawBytes && rawBytes.length > 4 && rawBytes[0] === 0x25 && rawBytes[1] === 0x50 && rawBytes[2] === 0x44 && rawBytes[3] === 0x46) {
+          pdfBytes = rawBytes;
+        } else if (rawBytes && rawBytes.length > 0) {
+          const textResponse = new TextDecoder("utf-8").decode(rawBytes).trim();
           try {
             const jsonObj = JSON.parse(textResponse);
             lastPdfDebugJson.respuestaPDF = jsonObj;
@@ -1476,7 +1590,7 @@
         }
 
         if (!pdfBytes || pdfBytes.length < 100) {
-          lastPdfDebugJson.rawPreview = textResponse.slice(0, 600);
+          lastPdfDebugJson.rawPreview = rawBytes ? new TextDecoder("utf-8").decode(rawBytes).slice(0, 600) : "empty";
           statusMsg.textContent = "⚠️ El servidor no devolvió un PDF válido (toca 'JSON' arriba para revisar).";
           return;
         }
@@ -1486,18 +1600,19 @@
           return;
         }
 
-        // disableWorker: true evita bloqueos de Web Worker cross-origin en Android WebView
+        statusMsg.textContent = `⏳ Renderizando (${Math.round(pdfBytes.length / 1024)} KB)...`;
+
         const loadingTask = pdfjsLib.getDocument({
           data: pdfBytes,
           disableWorker: true,
           isEvalSupported: false
         });
         currentPdfDoc = await loadingTask.promise;
-        currentPdfScale = 1.6;
+        currentPdfZoom = 1.0;
         await renderPdfPages();
         statusMsg.style.display = "none";
       } catch (err) {
-        statusMsg.textContent = "❌ Error al abrir la boleta: " + err.message;
+        statusMsg.textContent = "❌ Error al abrir la boleta: " + (err?.message || String(err));
       }
     }
 
@@ -1507,40 +1622,43 @@
       container.innerHTML = "";
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const targetCssWidth = Math.min(window.innerWidth - 32, 920);
 
       for (let pageNum = 1; pageNum <= currentPdfDoc.numPages; pageNum++) {
         const page = await currentPdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: currentPdfScale });
+        const baseViewport = page.getViewport({ scale: 1.0 });
+
+        // Normalizar escala para no exceder el límite de textura GPU (4096px) de Android WebView
+        const cssWidth = targetCssWidth * currentPdfZoom;
+        const rawPixelWidth = cssWidth * dpr;
+        const maxAllowedPixels = 2200;
+        const scaleMultiplier = rawPixelWidth > maxAllowedPixels
+          ? (maxAllowedPixels / baseViewport.width)
+          : (rawPixelWidth / baseViewport.width);
+
+        const viewport = page.getViewport({ scale: scaleMultiplier });
 
         const offscreenCanvas = document.createElement("canvas");
         const ctx = offscreenCanvas.getContext("2d", { alpha: false });
-        offscreenCanvas.width = Math.floor(viewport.width * dpr);
-        offscreenCanvas.height = Math.floor(viewport.height * dpr);
+        offscreenCanvas.width = Math.max(1, Math.floor(viewport.width));
+        offscreenCanvas.height = Math.max(1, Math.floor(viewport.height));
 
-        // Fondo blanco explícito para evitar transparencia en Android WebView
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
-        const renderContext = {
-          canvasContext: ctx,
-          viewport: viewport,
-          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
-        };
+        await page.render({ canvasContext: ctx, viewport }).promise;
 
-        await page.render(renderContext).promise;
-
-        // Convertir a <img> PNG para que WebView no borre ni deje en blanco la capa GPU del canvas
         const img = document.createElement("img");
         img.src = offscreenCanvas.toDataURL("image/png");
         img.alt = `Página ${pageNum}`;
-        img.style.width = `${Math.floor(viewport.width)}px`;
+        img.style.width = `${Math.floor(cssWidth)}px`;
         container.appendChild(img);
       }
     }
 
     async function changePdfZoom(delta) {
       if (!currentPdfDoc) return;
-      currentPdfScale = Math.max(0.8, Math.min(3.2, currentPdfScale + delta));
+      currentPdfZoom = Math.max(0.7, Math.min(2.2, currentPdfZoom + delta));
       await renderPdfPages();
     }
 
@@ -1619,8 +1737,9 @@
                 <span class="detail-sub">2da: ${antFormatted} | 3ra: ${terFormatted}${pagoInfoExtra}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Últ. Revisión</span>
-                <span class="detail-value" style="color:var(--muted)">${row.lastCheckedStr || "-"}</span>
+                <span class="detail-label">Línea Base Guardada</span>
+                <span class="detail-value" style="color:#38bdf8">${row.baselineSummary || "-"}</span>
+                <span class="detail-sub">Rev: ${row.lastCheckedStr || "-"}</span>
               </div>
             </div>
 
